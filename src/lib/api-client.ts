@@ -1,21 +1,21 @@
-import { ModelProvider, CardRecord, AuditResponse } from './types';
+import { CardRecord, AuditResponse } from './types';
 import Tesseract from 'tesseract.js';
 
-const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1';
+export const DEFAULT_ENDPOINT = 'https://openrouter.ai/api/v1';
+export const DEFAULT_MODEL = 'google/gemini-2.0-flash-exp:free';
 
 export async function testApiConnection(
   apiKey: string,
-  model: ModelProvider,
-  customEndpoint?: string
+  model: string,
+  endpoint: string = DEFAULT_ENDPOINT
 ): Promise<{ success: boolean; message: string }> {
   try {
     if (model === 'tesseract-wasm') {
       return { success: true, message: 'Tesseract WASM (C++ Engine) is ready offline.' };
     }
 
-    const endpoint = customEndpoint || (model.startsWith('google/') || model.startsWith('openai/') || model.startsWith('anthropic/') || model.startsWith('meta-llama/') || model.startsWith('openrouter/')
-      ? `${OPENROUTER_ENDPOINT}/models`
-      : `${OPENROUTER_ENDPOINT}/models`);
+    const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
+    const targetUrl = `${cleanEndpoint}/models`;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -25,13 +25,13 @@ export async function testApiConnection(
       headers['Authorization'] = `Bearer ${apiKey.trim()}`;
     }
 
-    const response = await fetch(endpoint, {
+    const response = await fetch(targetUrl, {
       method: 'GET',
       headers,
     });
 
     if (response.ok) {
-      return { success: true, message: `Successfully connected to ${model}!` };
+      return { success: true, message: `Successfully connected to endpoint (${cleanEndpoint}) for model "${model}"!` };
     } else {
       const errorText = await response.text();
       return { 
@@ -51,7 +51,6 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
   const result = await Tesseract.recognize(imageSrc, 'eng');
   const text = result.data.text;
 
-  // Rule-based heuristic extraction from raw OCR text
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   
   let email = '';
@@ -93,13 +92,17 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
 
 export async function extractCardDataWithAI(
   imageBase64: string,
-  model: ModelProvider,
-  apiKey: string
+  model: string,
+  apiKey: string,
+  endpoint: string = DEFAULT_ENDPOINT
 ): Promise<CardRecord[]> {
   if (model === 'tesseract-wasm') {
     const singleCard = await extractCardDataWithTesseract(imageBase64);
     return [singleCard];
   }
+
+  const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
+  const targetUrl = `${cleanEndpoint}/chat/completions`;
 
   const prompt = `You are a high-precision OCR and visiting card extraction engine. 
 Scan the provided image carefully. The image may contain ONE OR MULTIPLE visiting cards.
@@ -121,7 +124,7 @@ Each object in the array MUST have the exact following keys:
 Return ONLY valid JSON format without markdown blocks. Output must be a JSON array [ {...}, {...} ].`;
 
   const requestBody = {
-    model: model === 'openrouter/free' ? 'meta-llama/llama-3.2-11b-vision-instruct:free' : model,
+    model: model, // Passed directly without hardcoding!
     messages: [
       {
         role: 'user',
@@ -149,7 +152,7 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
     headers['Authorization'] = `Bearer ${apiKey.trim()}`;
   }
 
-  const res = await fetch(`${OPENROUTER_ENDPOINT}/chat/completions`, {
+  const res = await fetch(targetUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify(requestBody)
@@ -157,13 +160,12 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`AI Extraction failed (${res.status}): ${errText.slice(0, 150)}`);
+    throw new Error(`AI Extraction failed (${res.status}): ${errText.slice(0, 200)}`);
   }
 
   const data = await res.json();
   const rawContent = data.choices?.[0]?.message?.content || '[]';
   
-  // Clean markdown backticks if present
   const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
   
   let parsedCards: any[] = [];
@@ -208,8 +210,6 @@ export async function runPythonAudit(cards: CardRecord[]): Promise<AuditResponse
     return await res.json();
   } catch (err) {
     console.warn('Fallback to client-side audit due to local server response:', err);
-    
-    // Client-side fallback audit if python serverless function is not active locally
     return {
       processed_cards: cards,
       stats: {

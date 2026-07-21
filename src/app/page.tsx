@@ -11,13 +11,12 @@ import WaterBreakModal from '@/components/WaterBreakModal';
 import TemplateMappingModal from '@/components/TemplateMappingModal';
 import AuditSummaryModal from '@/components/AuditSummaryModal';
 
-import { ModelProvider, CardRecord, AuditStats } from '@/lib/types';
-import { extractCardDataWithAI, runPythonAudit } from '@/lib/api-client';
+import { CardRecord, AuditStats } from '@/lib/types';
+import { extractCardDataWithAI, runPythonAudit, DEFAULT_ENDPOINT, DEFAULT_MODEL } from '@/lib/api-client';
 import { 
   createInitialSessionState, 
   appendCardsToSession, 
-  MAX_SESSION_LIMIT,
-  BATCH_BREAK_THRESHOLD
+  MAX_SESSION_LIMIT 
 } from '@/lib/session-manager';
 
 import { 
@@ -26,8 +25,7 @@ import {
   Loader2, 
   ShieldCheck, 
   RotateCcw, 
-  AlertCircle,
-  FileCheck
+  AlertCircle 
 } from 'lucide-react';
 
 export default function Home() {
@@ -35,8 +33,9 @@ export default function Home() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [canInstallPwa, setCanInstallPwa] = useState(false);
 
-  // Model & API Config
-  const [selectedModel, setSelectedModel] = useState<ModelProvider>('openrouter/free');
+  // Model & Endpoint Config
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_MODEL);
+  const [apiEndpoint, setApiEndpoint] = useState<string>(DEFAULT_ENDPOINT);
   const [apiKey, setApiKey] = useState<string>('');
 
   // File Upload State
@@ -83,7 +82,6 @@ export default function Home() {
     setDeferredPrompt(null);
   };
 
-  // Convert File to Base64
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -93,7 +91,7 @@ export default function Home() {
     });
   };
 
-  // Main Processing Workflow (Stage 1 Vision/OCR -> Stage 2 Python Audit)
+  // Main Processing Workflow
   const handleProcessCards = async () => {
     if (selectedFiles.length === 0) return;
     if (sessionState.isSessionLimitReached) {
@@ -119,18 +117,17 @@ export default function Home() {
         }
 
         if (base64) {
-          const cards = await extractCardDataWithAI(base64, selectedModel, apiKey);
+          // Send user model, key, and endpoint dynamically
+          const cards = await extractCardDataWithAI(base64, selectedModel, apiKey, apiEndpoint);
           allExtractedCards.push(...cards);
         }
       }
 
       setProcessStatus('Stage 2: Running Python Pandas EDA & 10-step audit...');
       
-      // Execute Stage 2 Python Serverless Audit
       const auditResult = await runPythonAudit(allExtractedCards);
 
-      // Append to session state
-      const { nextState, triggerWaterBreak, limitReached } = appendCardsToSession(
+      const { nextState } = appendCardsToSession(
         sessionState,
         auditResult.processed_cards
       );
@@ -265,12 +262,14 @@ export default function Home() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
         
-        {/* Model Selection Bar */}
+        {/* Dynamic Model & Endpoint Selector */}
         <ModelSelector
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           apiKey={apiKey}
           onApiKeyChange={setApiKey}
+          apiEndpoint={apiEndpoint}
+          onApiEndpointChange={setApiEndpoint}
         />
 
         {/* KPI Dashboard Stats */}

@@ -15,15 +15,7 @@ export interface CardRecord {
   [key: string]: any;
 }
 
-export type ModelProvider = 
-  | 'openrouter/free'
-  | 'google/gemini-flash-1.5'
-  | 'google/gemini-pro-1.5'
-  | 'openai/gpt-4o-mini'
-  | 'openai/gpt-4o'
-  | 'anthropic/claude-3.5-sonnet'
-  | 'meta-llama/llama-3-70b-instruct'
-  | 'tesseract-wasm';
+export type ModelProvider = string;
 
 export interface AuditStats {
   total_cards: number;
