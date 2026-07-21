@@ -18,10 +18,11 @@ function getEffectiveApiKey(providedKey: string): string {
 }
 
 /**
- * Fast Client-Side Image Compression for Instant Vision API Transmission (5x speedup)
- * Downscales huge 5-10MB photos to ~1024px max dimension at 0.85 quality (~80KB payload)
+ * Fast Client-Side Image Compression for Vision API Transmission
+ * Downscales images to 2048px max dimension at 0.92 quality.
+ * Preserves high clarity for multi-card grid sheets (3x3 grid, 9+ cards on one image).
  */
-export async function compressImageForOcr(base64: string, maxDim: number = 1024, quality: number = 0.85): Promise<string> {
+export async function compressImageForOcr(base64: string, maxDim: number = 2048, quality: number = 0.92): Promise<string> {
   if (typeof window === 'undefined') return base64;
   return new Promise((resolve) => {
     const img = new Image();
@@ -150,7 +151,7 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
 }
 
 /**
- * Robust JSON Extractor & Parser
+ * Robust Multi-Stage JSON Extractor & Parser
  */
 function tryParseJson(text: string): any[] | null {
   if (!text || !text.trim()) return null;
@@ -199,8 +200,8 @@ export async function extractCardDataWithAI(
   apiKey: string,
   endpoint: string = DEFAULT_ENDPOINT
 ): Promise<CardRecord[]> {
-  // Compress image client-side to ensure fast API payload transmission
-  const compressedBase64 = await compressImageForOcr(imageBase64, 1024, 0.85);
+  // Compress image client-side keeping high 2048px resolution for 3x3 multi-card grid sheets
+  const compressedBase64 = await compressImageForOcr(imageBase64, 2048, 0.92);
 
   if (model === 'tesseract-wasm') {
     const singleCard = await extractCardDataWithTesseract(compressedBase64);
@@ -215,10 +216,14 @@ export async function extractCardDataWithAI(
   const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
   const targetUrl = `${cleanEndpoint}/chat/completions`;
 
-  const prompt = `Extract all visiting card info into a JSON ARRAY.
-Keys required per object: "name", "title", "company", "industry", "email", "mobile", "landline", "website", "address", "city", "country", "notes".
-Focus on 100% accuracy for Name, Email, Mobile, and Landline.
-Output strictly valid JSON array only starting with [ and ending with ].`;
+  const prompt = `CRITICAL MANDATE: This image may contain ONE OR MULTIPLE visiting cards placed side-by-side or in a grid (e.g., 3x3 grid with 9 cards on a single sheet).
+Scan from top-left to bottom-right and extract EVERY SINGLE VISITING CARD present in the image into a JSON ARRAY. Do NOT stop after the first card! Extract all 2, 4, 6, 9 or more cards.
+
+Each card object in the JSON ARRAY must have these keys:
+"name", "title", "company", "industry", "email", "mobile", "landline", "website", "address", "city", "country", "notes".
+
+Ensure 100% accuracy for Name, Email, Mobile, and Landline numbers.
+Output MUST be strictly valid JSON starting with [ and ending with ].`;
 
   const requestBody = {
     model: model || DEFAULT_MODEL,
@@ -237,7 +242,7 @@ Output strictly valid JSON array only starting with [ and ending with ].`;
       }
     ],
     temperature: 0.1,
-    max_tokens: 600
+    max_tokens: 4000
   };
 
   const headers: Record<string, string> = {
