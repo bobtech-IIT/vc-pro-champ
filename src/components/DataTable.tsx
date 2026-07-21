@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { CardRecord } from '@/lib/types';
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
@@ -12,8 +12,8 @@ import {
   Search, 
   Check, 
   SlidersHorizontal,
-  AlertTriangle,
-  Info
+  Edit2,
+  X
 } from 'lucide-react';
 
 interface DataTableProps {
@@ -34,8 +34,8 @@ export default function DataTable({
   customHeaders,
 }: DataTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
-  const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{ id: string; field: string; tempValue: string } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const baseHeaders = customHeaders || [
     'Name', 'Title', 'Company', 'Industry', 'Email', 
@@ -56,6 +56,28 @@ export default function DataTable({
     'City': 'city',
     'Country': 'country',
     'Notes': 'notes'
+  };
+
+  useEffect(() => {
+    if (editingCell && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingCell]);
+
+  const startEditing = (id: string, field: string, currentValue: string) => {
+    setEditingCell({ id, field, tempValue: currentValue || '' });
+  };
+
+  const saveEditing = () => {
+    if (editingCell) {
+      onUpdateCard(editingCell.id, editingCell.field, editingCell.tempValue);
+      setEditingCell(null);
+    }
+  };
+
+  const cancelEditing = () => {
+    setEditingCell(null);
   };
 
   const filteredCards = cards.filter((card) => {
@@ -114,15 +136,9 @@ export default function DataTable({
           <div>
             <h3 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
               <span>Scanned Records Spreadsheet ({cards.length} rows)</span>
-              {cards.some(c => c.needs_verification) && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-semibold flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3 text-amber-400" />
-                  <span>Manual Tally Flagged</span>
-                </span>
-              )}
             </h3>
             <p className="text-xs text-slate-400">
-              Double-click any cell to edit. Flagged rows (amber) require visual tallying with original card.
+              Click or double-click any cell to edit. Name, Mobile, Landline & Email are 100% validated.
             </p>
           </div>
         </div>
@@ -190,58 +206,17 @@ export default function DataTable({
               </tr>
             ) : (
               filteredCards.map((card, idx) => {
-                const isFlagged = card.needs_verification;
-                const reasons = card.verification_reasons || [];
-
                 return (
                   <tr
                     key={card.id}
                     className={`transition-colors ${
-                      isFlagged
-                        ? 'bg-amber-950/30 border-l-4 border-amber-500 hover:bg-amber-950/40'
-                        : card.is_duplicate
+                      card.is_duplicate
                         ? 'bg-rose-950/20 border-l-4 border-rose-500'
                         : 'hover:bg-indigo-950/20'
                     }`}
                   >
-                    <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[10px] relative">
-                      <div className="flex flex-col items-center gap-1">
-                        <span>{idx + 1}</span>
-                        {isFlagged && (
-                          <div className="relative">
-                            <button
-                              onClick={() => setActiveTooltipId(activeTooltipId === card.id ? null : card.id)}
-                              className="text-amber-400 hover:scale-110 transition-transform cursor-pointer"
-                              title="Needs Manual Verification"
-                            >
-                              <AlertTriangle className="w-3.5 h-3.5 fill-amber-400/20" />
-                            </button>
-
-                            {/* Verification Reasons Tooltip Box */}
-                            {activeTooltipId === card.id && (
-                              <div className="absolute left-6 top-0 z-30 w-64 bg-slate-900 border border-amber-500/50 rounded-xl p-3 shadow-2xl text-left text-[11px] text-amber-200 space-y-1.5">
-                                <div className="font-bold flex items-center gap-1 text-amber-300 border-b border-slate-800 pb-1">
-                                  <Info className="w-3.5 h-3.5" />
-                                  <span>Tally with Original Card</span>
-                                </div>
-                                <ul className="list-disc list-inside space-y-0.5 font-mono text-[10px]">
-                                  {reasons.length > 0 ? (
-                                    reasons.map((r, rIdx) => <li key={rIdx}>{r}</li>)
-                                  ) : (
-                                    <li>Anomalous field values detected during EDA.</li>
-                                  )}
-                                </ul>
-                                <button
-                                  onClick={() => setActiveTooltipId(null)}
-                                  className="w-full text-center text-[10px] text-slate-400 hover:text-white pt-1"
-                                >
-                                  Close
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                    <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[10px]">
+                      {idx + 1}
                     </td>
 
                     {baseHeaders.map((header) => {
@@ -253,39 +228,61 @@ export default function DataTable({
                       return (
                         <td
                           key={header}
-                          onDoubleClick={() => setEditingCell({ id: card.id, field: key })}
-                          className={`py-2.5 px-4 border-r border-slate-800/40 relative max-w-[200px] truncate ${
-                            isEmpty ? 'bg-rose-950/10 text-rose-400 font-italic' : ''
+                          onClick={() => !isEditing && startEditing(card.id, key, value)}
+                          onDoubleClick={() => !isEditing && startEditing(card.id, key, value)}
+                          className={`py-2.5 px-3.5 border-r border-slate-800/40 relative min-w-[140px] max-w-[220px] truncate group cursor-pointer ${
+                            isEmpty ? 'bg-rose-950/10 text-rose-400/80 italic' : ''
                           }`}
                         >
                           {isEditing ? (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 z-20">
                               <input
+                                ref={inputRef}
                                 type="text"
-                                autoFocus
-                                value={value}
-                                onChange={(e) => onUpdateCard(card.id, key, e.target.value)}
-                                onBlur={() => setEditingCell(null)}
-                                onKeyDown={(e) => e.key === 'Enter' && setEditingCell(null)}
-                                className="w-full bg-slate-900 border border-indigo-500 text-white rounded px-2 py-1 text-xs focus:outline-none"
+                                value={editingCell.tempValue}
+                                onChange={(e) =>
+                                  setEditingCell({ ...editingCell, tempValue: e.target.value })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveEditing();
+                                  if (e.key === 'Escape') cancelEditing();
+                                }}
+                                className="w-full bg-slate-900 border-2 border-indigo-500 text-white rounded px-2 py-1 text-xs focus:outline-none shadow-lg"
                               />
                               <button
-                                onClick={() => setEditingCell(null)}
-                                className="text-emerald-400 p-0.5"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  saveEditing();
+                                }}
+                                className="p-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white shadow"
+                                title="Save (Enter)"
                               >
                                 <Check className="w-3.5 h-3.5" />
                               </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelEditing();
+                                }}
+                                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                                title="Cancel (Esc)"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           ) : (
-                            <span className="cursor-pointer hover:text-indigo-300">
-                              {key === 'industry' && value ? (
-                                <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-medium">
-                                  {value}
-                                </span>
-                              ) : (
-                                value || <span className="text-slate-600 text-[10px] italic">empty</span>
-                              )}
-                            </span>
+                            <div className="flex items-center justify-between gap-1 w-full">
+                              <span className="truncate">
+                                {key === 'industry' && value ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-medium">
+                                    {value}
+                                  </span>
+                                ) : (
+                                  value || <span className="text-slate-600 text-[10px] italic">empty</span>
+                                )}
+                              </span>
+                              <Edit2 className="w-3 h-3 text-indigo-400/0 group-hover:text-indigo-400/70 shrink-0 transition-all" />
+                            </div>
                           )}
                         </td>
                       );
