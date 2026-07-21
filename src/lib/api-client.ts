@@ -102,51 +102,123 @@ export async function testApiConnection(
 
 export async function extractCardDataWithTesseract(imageSrc: string): Promise<CardRecord> {
   const result = await Tesseract.recognize(imageSrc, 'eng');
-  const text = result.data.text;
+  const rawText = result.data.text;
 
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  // Clean OCR noise glyphs (©, [0, Q, XX, @)
+  const cleanText = rawText
+    .replace(/[©®™\[\]]/g, '')
+    .replace(/\b[QXX0]\b/g, '');
+
+  const rawLines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
   
+  let name = '';
+  let title = '';
+  let company = '';
   let email = '';
   let website = '';
   let mobile = '';
   let landline = '';
-  
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-  const webRegex = /(https?:\/\/)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-  const phoneRegex = /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+  let address = '';
+  let city = '';
+  let country = '';
+  let notes = '';
 
-  for (const line of lines) {
+  const phonesFound: string[] = [];
+
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
+  const webRegex = /(https?:\/\/)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
+  const phoneRegex = /\+?\d{1,3}[\s.-]?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g;
+  const titleRegex = /Manager|Director|Officer|Engineer|Architect|Lead|Head|President|Executive|Founder|CEO|CTO|CFO|COO|VP/i;
+  const companyRegex = /Solutions|Group|Technologies|Logistics|Designs|Innovations|Collaborative|Habitats|Systems|Services|Inc|Ltd|Corp|Pvt|LLC|Global|Media/i;
+
+  // 1. Scan for Email, Website, Phones, LinkedIn, WhatsApp & GST/Tax ID
+  for (const line of rawLines) {
     if (!email && emailRegex.test(line)) {
       email = line.match(emailRegex)?.[0] || '';
     }
     if (!website && webRegex.test(line) && !line.includes('@')) {
       website = line.match(webRegex)?.[0] || '';
     }
-    if (!mobile && phoneRegex.test(line)) {
-      mobile = line.match(phoneRegex)?.[0] || '';
+
+    const matches = line.match(phoneRegex);
+    if (matches) {
+      matches.forEach(p => {
+        const digits = p.replace(/\D/g, '');
+        if (digits.length >= 7 && !phonesFound.includes(p)) {
+          phonesFound.push(p);
+        }
+      });
+    }
+
+    if (/LinkedIn:|WhatsApp:|GST\s*\/\s*Tax ID:/i.test(line)) {
+      notes += (notes ? ' | ' : '') + line;
     }
   }
 
-  const company = lines[2] || 'Organization';
+  if (phonesFound.length > 0) mobile = phonesFound[0];
+  if (phonesFound.length > 1) landline = phonesFound[1];
+
+  // 2. Classify Name, Title, Company & Address from lines
+  for (const line of rawLines) {
+    // Skip lines with email/website/phone/notes
+    if (emailRegex.test(line) || webRegex.test(line) || /LinkedIn:|WhatsApp:|Tax ID:/i.test(line)) continue;
+
+    if (!title && titleRegex.test(line)) {
+      title = line;
+      continue;
+    }
+
+    if (!company && companyRegex.test(line)) {
+      company = line;
+      continue;
+    }
+
+    if (!address && /Road|Street|Suite|Avenue|Salai|Block|Village|Building|Floor|London|Delhi|Bengaluru|Mumbai|Chennai|EC1V|UK|India/i.test(line)) {
+      address = line.replace(/^Company Address[\s,:-]*/i, '').trim();
+      continue;
+    }
+
+    // Name heuristic: 2-3 words, mostly alphabetic, not matching company/title
+    if (!name && line.length > 3 && line.length < 35 && !/\d/.test(line)) {
+      name = line;
+    }
+  }
+
+  // Fallback assign if needed
+  if (!name) name = rawLines[0] || 'Unknown Contact';
+  if (!company) company = rawLines[1] || 'Corporate Solutions';
+
+  // Capitalize Name
+  name = name.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+
+  // Extract City & Country
+  if (address.includes('London')) city = 'London';
+  if (address.includes('Bengaluru')) city = 'Bengaluru';
+  if (address.includes('New Delhi')) city = 'New Delhi';
+  if (address.includes('Mumbai')) city = 'Mumbai';
+  if (address.includes('Chennai')) city = 'Chennai';
+  if (address.includes('UK')) country = 'UK';
+  if (address.includes('India')) country = 'India';
+
   let industry = 'General Corporate';
-  if (/tech|soft|code|ai|digital|system/i.test(company)) industry = 'Technology & IT Services';
+  if (/tech|soft|code|ai|digital|system|solution/i.test(company + ' ' + title)) industry = 'Technology & IT Services';
   else if (/logistics|freight|transport|cargo/i.test(company)) industry = 'Logistics & Supply Chain';
   else if (/health|hospital|pharma|medical/i.test(company)) industry = 'Healthcare & Life Sciences';
 
   return {
     id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-    name: lines[0] || 'Unknown Name',
-    title: lines[1] || 'Business Professional',
+    name,
+    title,
     company,
     industry,
     email,
     mobile,
     landline,
     website,
-    address: lines.slice(3).join(', '),
-    city: '',
-    country: '',
-    notes: `Captured via WASM OCR fallback: ${text.slice(0, 100)}...`
+    address,
+    city,
+    country,
+    notes: notes || `Cleaned via Tesseract WASM OCR`
   };
 }
 

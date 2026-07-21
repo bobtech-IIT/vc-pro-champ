@@ -26,7 +26,7 @@ STANDARD_DESIGNATIONS = {
 
 INDUSTRY_KEYWORDS = [
     (r'logistics|transport|freight|cargo|shipping|express|supply chain', 'Logistics & Supply Chain'),
-    (r'tech|soft|cloud|code|ai|cyber|data|digital|system|it\b|infotech', 'Technology & IT Services'),
+    (r'tech|soft|cloud|code|ai|cyber|data|digital|system|it\b|infotech|solution', 'Technology & IT Services'),
     (r'health|hospital|pharma|clinic|medical|doctor|care|bio', 'Healthcare & Life Sciences'),
     (r'fintech|bank|capital|invest|finance|wealth|credit|insur|equity', 'Banking & Financial Services'),
     (r'build|construct|real estate|realty|architect|property|housing', 'Real Estate & Construction'),
@@ -40,6 +40,25 @@ INDUSTRY_KEYWORDS = [
     (r'energy|solar|power|oil|gas|wind|clean|environment', 'Energy & Renewable Resources'),
     (r'manufac|factory|steel|metal|industrial|plant|machinery', 'Manufacturing & Industrial')
 ]
+
+KNOWN_CITIES = [
+    'London', 'New Delhi', 'Bengaluru', 'Mumbai', 'Chennai', 'Gurgaon', 'Kolkata', 'Pune', 
+    'New York', 'San Francisco', 'Singapore', 'Dubai', 'Berlin', 'Tokyo', 'Sydney', 'Hyderabad'
+]
+
+KNOWN_COUNTRIES = [
+    'UK', 'United Kingdom', 'India', 'USA', 'United States', 'Singapore', 'UAE', 'Germany', 
+    'Japan', 'Australia', 'Canada', 'France'
+]
+
+def clean_ocr_symbols(text: str) -> str:
+    if not text:
+        return ""
+    # Remove OCR glyph icons and noise (e.g. ©, [0, Q, XX, @ at start)
+    cleaned = re.sub(r"[©®™\[\]]", "", text)
+    cleaned = re.sub(r"\b[QXX0]\b", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.-:")
+    return cleaned
 
 def infer_industry(company: str, title: str, notes: str) -> str:
     text = f"{company} {title} {notes}".lower()
@@ -65,7 +84,6 @@ def clean_and_audit_cards(cards_data: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     df = pd.DataFrame(cards_data)
     
-    # Ensure expected standard columns exist
     expected_cols = [
         "name", "title", "company", "industry", "email", 
         "mobile", "landline", "website", "address", 
@@ -75,7 +93,6 @@ def clean_and_audit_cards(cards_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         if col not in df.columns:
             df[col] = ""
 
-    # Replace NaNs with empty string
     df = df.fillna("")
 
     audit_logs = []
@@ -83,7 +100,96 @@ def clean_and_audit_cards(cards_data: List[Dict[str, Any]]) -> Dict[str, Any]:
     df['needs_verification'] = False
     df['verification_reasons'] = [[] for _ in range(len(df))]
 
-    # 1. Critical Field 1: Email Normalization & Syntax Correction
+    # 1. Clean Symbol Noise across all fields
+    for col in expected_cols:
+        cleaned_col = []
+        for idx, row in df.iterrows():
+            val = str(row[col])
+            clean_val = clean_ocr_symbols(val)
+            if clean_val != val and col not in ['address', 'notes']:
+                corrections_count += 1
+            cleaned_col.append(clean_val)
+        df[col] = cleaned_col
+
+    # 2. Extract Leaked Emails, Websites, Phones, & Notes from Address Field
+    for idx, row in df.iterrows():
+        addr = str(row['address']).strip()
+        email = str(row['email']).strip()
+        website = str(row['website']).strip()
+        mobile = str(row['mobile']).strip()
+        landline = str(row['landline']).strip()
+        notes = str(row['notes']).strip()
+        city = str(row['city']).strip()
+        country = str(row['country']).strip()
+
+        if addr:
+          # Remove "Company Address" prefix label
+          addr = re.sub(r"^Company Address[\s,:-]*", "", addr, flags=re.IGNORECASE).strip()
+
+          # Extract Leaked Email from Address
+          email_match = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", addr)
+          if email_match:
+              if not email:
+                  df.at[idx, 'email'] = email_match.group(0).lower()
+                  audit_logs.append(f"Row {idx+1}: Extracted email '{email_match.group(0)}' from Address.")
+                  corrections_count += 1
+              addr = addr.replace(email_match.group(0), "").strip()
+
+          # Extract Leaked Website from Address
+          web_match = re.search(r"(https?://)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", addr)
+          if web_match and not web_match.group(0).startswith("http") and not email_match:
+              if not website:
+                  df.at[idx, 'website'] = web_match.group(0).lower()
+                  audit_logs.append(f"Row {idx+1}: Extracted website '{web_match.group(0)}' from Address.")
+                  corrections_count += 1
+              addr = addr.replace(web_match.group(0), "").strip()
+
+          # Extract Leaked Phone Numbers from Address
+          phones = re.findall(r"\+?\d{1,3}[\s.-]?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}", addr)
+          for phone_str in phones:
+              p_clean = re.sub(r"[^\d+]", "", phone_str)
+              if len(p_clean) >= 7:
+                  if not mobile:
+                      df.at[idx, 'mobile'] = phone_str
+                      audit_logs.append(f"Row {idx+1}: Extracted mobile phone '{phone_str}' from Address.")
+                      corrections_count += 1
+                  elif not landline and phone_str != mobile:
+                      df.at[idx, 'landline'] = phone_str
+                      audit_logs.append(f"Row {idx+1}: Extracted landline phone '{phone_str}' from Address.")
+                      corrections_count += 1
+                  addr = addr.replace(phone_str, "").strip()
+
+          # Extract Extra Notes (LinkedIn, WhatsApp, Tax ID) from Address
+          notes_matches = re.findall(r"(LinkedIn:[^\s,]+|WhatsApp:[^\s,]+|GST\s*/\s*Tax ID:[^,]+)", addr, re.IGNORECASE)
+          if notes_matches:
+              extracted_notes = " | ".join(notes_matches)
+              df.at[idx, 'notes'] = f"{notes} | {extracted_notes}".strip(" |")
+              for nm in notes_matches:
+                  addr = addr.replace(nm, "").strip()
+              corrections_count += 1
+
+          # Clean remaining address noise
+          addr = re.sub(r"[\s,.-]+", " ", addr).strip(" ,.-")
+          df.at[idx, 'address'] = addr
+
+        # Extract City & Country if empty
+        if not city:
+            for c in KNOWN_CITIES:
+                if re.search(r"\b" + re.escape(c) + r"\b", addr, re.IGNORECASE):
+                    df.at[idx, 'city'] = c
+                    audit_logs.append(f"Row {idx+1}: Inferred City '{c}' from Address.")
+                    corrections_count += 1
+                    break
+
+        if not country:
+            for co in KNOWN_COUNTRIES:
+                if re.search(r"\b" + re.escape(co) + r"\b", addr, re.IGNORECASE):
+                    df.at[idx, 'country'] = co
+                    audit_logs.append(f"Row {idx+1}: Inferred Country '{co}' from Address.")
+                    corrections_count += 1
+                    break
+
+    # 3. Email Normalization
     cleaned_emails = []
     for idx, row in df.iterrows():
         email = str(row['email']).strip().lower()
@@ -99,38 +205,25 @@ def clean_and_audit_cards(cards_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         cleaned_emails.append(email)
     df['email'] = cleaned_emails
 
-    # 2. Critical Fields 2 & 3: Mobile Number & Landline Number Cleaning & Formatting
-    for col in ['mobile', 'landline']:
-        cleaned_phones = []
-        for idx, row in df.iterrows():
-            val = str(row[col]).strip()
-            if val:
-                # Remove extra noise characters while keeping valid phone formatting
-                cleaned_val = re.sub(r"[^\d+()-\s.]", "", val).strip()
-                if cleaned_val != val:
-                    audit_logs.append(f"Row {idx+1}: Sanitized {col} phone format: '{val}' -> '{cleaned_val}'")
-                    corrections_count += 1
-                cleaned_phones.append(cleaned_val)
-            else:
-                cleaned_phones.append("")
-        df[col] = cleaned_phones
-
-    # 3. Critical Field 4: Name Normalization & Title Case Formatting
+    # 4. Name Cleanup (Separating logo/company name if attached to Name)
     cleaned_names = []
     for idx, row in df.iterrows():
         name = str(row['name']).strip()
-        if name:
-            # Strip numeric prefix noise from Name if present
-            name_clean = re.sub(r"^\d+[\s.-]+", "", name).title()
-            if name_clean != name:
-                audit_logs.append(f"Row {idx+1}: Formatted Name: '{name}' -> '{name_clean}'")
+        company = str(row['company']).strip()
+
+        # If name has Company prepended like "AXELOR GLOBAL SOLUTIONS ALEXANDER CHEN"
+        if company and company.lower() in name.lower() and len(name) > len(company):
+            name_clean = name.lower().replace(company.lower(), "").strip().title()
+            if name_clean:
+                audit_logs.append(f"Row {idx+1}: Separated Company name from Name: '{name}' -> '{name_clean}'")
+                name = name_clean
                 corrections_count += 1
-            cleaned_names.append(name_clean)
-        else:
-            cleaned_names.append("")
+
+        name = re.sub(r"^\d+[\s.-]+", "", name).title()
+        cleaned_names.append(name)
     df['name'] = cleaned_names
 
-    # 4. Website Formatting
+    # 5. Website Formatting
     cleaned_websites = []
     for idx, row in df.iterrows():
         web = str(row['website']).strip().lower()
@@ -141,23 +234,11 @@ def clean_and_audit_cards(cards_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         cleaned_websites.append(web)
     df['website'] = cleaned_websites
 
-    # 5. Address Leak Clean
-    cleaned_addresses = []
-    for idx, row in df.iterrows():
-        addr = str(row['address']).strip()
-        if addr:
-            if re.search(r'https?://|www\.', addr, re.IGNORECASE):
-                audit_logs.append(f"Row {idx+1}: Cleaned URL leak from address: '{addr}'")
-                addr = re.sub(r'https?://\S+|www\.\S+', '', addr).strip(' ,')
-                corrections_count += 1
-        cleaned_addresses.append(addr)
-    df['address'] = cleaned_addresses
-
     # 6. Industry Inference
     cleaned_industries = []
     for idx, row in df.iterrows():
         ind = str(row['industry']).strip()
-        if not ind or ind == 'General Corporate / Services':
+        if not ind or ind == 'General Corporate / Services' or ind == 'General Corporate':
             ind = infer_industry(str(row['company']), str(row['title']), str(row['notes']))
         cleaned_industries.append(ind)
     df['industry'] = cleaned_industries
@@ -172,7 +253,7 @@ def clean_and_audit_cards(cards_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         cleaned_titles.append(title.title() if title else "")
     df['title'] = cleaned_titles
 
-    # 8. Deduplication (Email, Phone, Name+Company)
+    # 8. Deduplication
     duplicates_count = 0
     df['is_duplicate'] = False
     
