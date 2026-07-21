@@ -4,6 +4,19 @@ import Tesseract from 'tesseract.js';
 export const DEFAULT_ENDPOINT = 'https://openrouter.ai/api/v1';
 export const DEFAULT_MODEL = 'openrouter/free';
 
+function getEffectiveApiKey(providedKey: string): string {
+  if (providedKey && providedKey.trim()) {
+    return providedKey.trim();
+  }
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('vcpro_api_key');
+    if (saved && saved.trim()) {
+      return saved.trim();
+    }
+  }
+  return '';
+}
+
 export async function testApiConnection(
   apiKey: string,
   model: string,
@@ -16,13 +29,14 @@ export async function testApiConnection(
 
     const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
     const targetUrl = `${cleanEndpoint}/models`;
+    const effectiveKey = getEffectiveApiKey(apiKey);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
 
-    if (apiKey.trim()) {
-      headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+    if (effectiveKey) {
+      headers['Authorization'] = `Bearer ${effectiveKey}`;
     }
 
     const response = await fetch(targetUrl, {
@@ -101,6 +115,11 @@ export async function extractCardDataWithAI(
     return [singleCard];
   }
 
+  const effectiveKey = getEffectiveApiKey(apiKey);
+  if (!effectiveKey) {
+    throw new Error('API Key Missing: Please enter your OpenRouter API key (sk-or-v1-...) in the API Key box and click Save.');
+  }
+
   const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
   const targetUrl = `${cleanEndpoint}/chat/completions`;
 
@@ -124,7 +143,7 @@ Each object in the array MUST have the exact following keys:
 Return ONLY valid JSON format without markdown blocks. Output must be a JSON array [ {...}, {...} ].`;
 
   const requestBody = {
-    model: model, // E.g. 'openrouter/free' or 'openrouter/auto'
+    model: model || DEFAULT_MODEL,
     messages: [
       {
         role: 'user',
@@ -144,13 +163,10 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${effectiveKey}`,
     'HTTP-Referer': 'https://vcpro.app',
     'X-Title': 'VC Pro Scanner'
   };
-
-  if (apiKey && apiKey.trim()) {
-    headers['Authorization'] = `Bearer ${apiKey.trim()}`;
-  }
 
   const res = await fetch(targetUrl, {
     method: 'POST',
@@ -161,7 +177,7 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
   if (!res.ok) {
     const errText = await res.text();
     if (res.status === 401) {
-      throw new Error(`OpenRouter Authentication Required (401). Please enter your free OpenRouter API Key from https://openrouter.ai/keys in the API Key box.`);
+      throw new Error(`OpenRouter Authentication Failed (401). Invalid API Key. Please verify your OpenRouter key at https://openrouter.ai/keys.`);
     }
     throw new Error(`AI Extraction failed (${res.status}): ${errText.slice(0, 180)}`);
   }

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { testApiConnection } from '@/lib/api-client';
-import { Key, Cpu, CheckCircle2, XCircle, Loader2, Zap, Globe, ExternalLink, Save, Check } from 'lucide-react';
+import { Key, Cpu, CheckCircle2, XCircle, Loader2, Zap, Globe, ExternalLink, Save, Check, Eye, EyeOff } from 'lucide-react';
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -46,12 +46,19 @@ export default function ModelSelector({
 
   const [testing, setTesting] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const activeModelId = isCustomModel ? customModelText : selectedModel;
 
-  const handleSave = () => {
+  const handleSaveSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     onSaveConfig();
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vcpro_api_key', apiKey);
+      localStorage.setItem('vcpro_selected_model', activeModelId);
+      localStorage.setItem('vcpro_api_endpoint', apiEndpoint);
+    }
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };
@@ -133,13 +140,14 @@ export default function ModelSelector({
             value={apiEndpoint}
             onChange={(e) => {
               onApiEndpointChange(e.target.value);
+              if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_endpoint', e.target.value);
               setTestResult(null);
             }}
             className="w-full bg-slate-950/90 border border-slate-700/80 text-white placeholder-slate-500 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
           />
         </div>
 
-        {/* 3. API Key, Save Button & Test Button */}
+        {/* 3. HTML Form for API Key + Chrome Password Manager Save Prompt */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -157,28 +165,45 @@ export default function ModelSelector({
             </a>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              placeholder={activeModelId === 'tesseract-wasm' ? 'No key required' : 'sk-or-v1-...'}
-              disabled={activeModelId === 'tesseract-wasm'}
-              value={apiKey}
-              onChange={(e) => {
-                onApiKeyChange(e.target.value);
-                setTestResult(null);
-              }}
-              className="w-full bg-slate-950/90 border border-slate-700/80 text-white placeholder-slate-500 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-50 transition-all"
-            />
+          <form onSubmit={handleSaveSubmit} className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <input
+                id="openrouter_api_key"
+                name="openrouter_api_key"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder={activeModelId === 'tesseract-wasm' ? 'No key required' : 'sk-or-v1-...'}
+                disabled={activeModelId === 'tesseract-wasm'}
+                value={apiKey}
+                onChange={(e) => {
+                  const newKey = e.target.value;
+                  onApiKeyChange(newKey);
+                  if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_key', newKey);
+                  setTestResult(null);
+                }}
+                className="w-full bg-slate-950/90 border border-slate-700/80 text-white placeholder-slate-500 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-50 transition-all"
+              />
+              {activeModelId !== 'tesseract-wasm' && (
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  title={showPassword ? 'Hide Key' : 'Show Key'}
+                >
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
 
-            {/* Save Key Button */}
+            {/* Save Button (triggers HTML form submit for Chrome Autofill / Password Save) */}
             <button
-              onClick={handleSave}
-              className={`px-3 py-2.5 rounded-xl text-xs font-semibold text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md ${
+              type="submit"
+              className={`px-3 py-2.5 rounded-xl text-xs font-semibold text-white transition-all flex items-center justify-center gap-1 cursor-pointer shadow-md shrink-0 ${
                 savedSuccess
                   ? 'bg-emerald-600 border border-emerald-400'
                   : 'bg-emerald-700 hover:bg-emerald-600'
               }`}
-              title="Save Key to Local Storage"
+              title="Save Key to Browser LocalStorage & Password Manager"
             >
               {savedSuccess ? (
                 <>
@@ -195,9 +220,10 @@ export default function ModelSelector({
 
             {/* Test Connection Button */}
             <button
+              type="button"
               onClick={handleTestConnection}
               disabled={testing}
-              className="whitespace-nowrap px-3 py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20 cursor-pointer"
+              className="whitespace-nowrap px-3 py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1 shadow-lg shadow-indigo-600/20 cursor-pointer shrink-0"
             >
               {testing ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
@@ -206,7 +232,7 @@ export default function ModelSelector({
               )}
               <span>Test</span>
             </button>
-          </div>
+          </form>
         </div>
 
       </div>
