@@ -38,6 +38,27 @@ export default function Home() {
   const [apiEndpoint, setApiEndpoint] = useState<string>(DEFAULT_ENDPOINT);
   const [apiKey, setApiKey] = useState<string>('');
 
+  // Load saved credentials from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedKey = localStorage.getItem('vcpro_api_key');
+      const savedModel = localStorage.getItem('vcpro_selected_model');
+      const savedEndpoint = localStorage.getItem('vcpro_api_endpoint');
+
+      if (savedKey) setApiKey(savedKey);
+      if (savedModel) setSelectedModel(savedModel);
+      if (savedEndpoint) setApiEndpoint(savedEndpoint);
+    }
+  }, []);
+
+  const handleSaveConfig = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vcpro_api_key', apiKey);
+      localStorage.setItem('vcpro_selected_model', selectedModel);
+      localStorage.setItem('vcpro_api_endpoint', apiEndpoint);
+    }
+  };
+
   // File Upload State
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
   const [showCamera, setShowCamera] = useState(false);
@@ -99,6 +120,9 @@ export default function Home() {
       return;
     }
 
+    // Auto-save configuration on process start
+    handleSaveConfig();
+
     setProcessing(true);
     setProcessStatus('Stage 1: Capturing text & fields with AI...');
 
@@ -117,7 +141,6 @@ export default function Home() {
         }
 
         if (base64) {
-          // Send user model, key, and endpoint dynamically
           const cards = await extractCardDataWithAI(base64, selectedModel, apiKey, apiEndpoint);
           allExtractedCards.push(...cards);
         }
@@ -262,14 +285,24 @@ export default function Home() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
         
-        {/* Dynamic Model & Endpoint Selector */}
+        {/* Dynamic Model & Endpoint Selector with Save Button & Persistent Storage */}
         <ModelSelector
           selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
+          onModelChange={(m) => {
+            setSelectedModel(m);
+            if (typeof window !== 'undefined') localStorage.setItem('vcpro_selected_model', m);
+          }}
           apiKey={apiKey}
-          onApiKeyChange={setApiKey}
+          onApiKeyChange={(k) => {
+            setApiKey(k);
+            if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_key', k);
+          }}
           apiEndpoint={apiEndpoint}
-          onApiEndpointChange={setApiEndpoint}
+          onApiEndpointChange={(e) => {
+            setApiEndpoint(e);
+            if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_endpoint', e);
+          }}
+          onSaveConfig={handleSaveConfig}
         />
 
         {/* KPI Dashboard Stats */}

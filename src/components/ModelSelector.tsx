@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { testApiConnection } from '@/lib/api-client';
-import { Key, Cpu, CheckCircle2, XCircle, Loader2, Zap, Globe, ExternalLink } from 'lucide-react';
+import { Key, Cpu, CheckCircle2, XCircle, Loader2, Zap, Globe, ExternalLink, Save, Check } from 'lucide-react';
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -11,6 +11,7 @@ interface ModelSelectorProps {
   onApiKeyChange: (key: string) => void;
   apiEndpoint: string;
   onApiEndpointChange: (endpoint: string) => void;
+  onSaveConfig: () => void;
 }
 
 const PRESET_MODELS = [
@@ -34,6 +35,7 @@ export default function ModelSelector({
   onApiKeyChange,
   apiEndpoint,
   onApiEndpointChange,
+  onSaveConfig,
 }: ModelSelectorProps) {
   const [isCustomModel, setIsCustomModel] = useState(
     !PRESET_MODELS.some(m => m.id === selectedModel && m.id !== 'custom')
@@ -43,9 +45,16 @@ export default function ModelSelector({
   );
 
   const [testing, setTesting] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const activeModelId = isCustomModel ? customModelText : selectedModel;
+
+  const handleSave = () => {
+    onSaveConfig();
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2500);
+  };
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -130,7 +139,7 @@ export default function ModelSelector({
           />
         </div>
 
-        {/* 3. API Key & Test Connection Button */}
+        {/* 3. API Key, Save Button & Test Button */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -161,10 +170,34 @@ export default function ModelSelector({
               className="w-full bg-slate-950/90 border border-slate-700/80 text-white placeholder-slate-500 rounded-xl px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-50 transition-all"
             />
 
+            {/* Save Key Button */}
+            <button
+              onClick={handleSave}
+              className={`px-3 py-2.5 rounded-xl text-xs font-semibold text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md ${
+                savedSuccess
+                  ? 'bg-emerald-600 border border-emerald-400'
+                  : 'bg-emerald-700 hover:bg-emerald-600'
+              }`}
+              title="Save Key to Local Storage"
+            >
+              {savedSuccess ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Saved!</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save</span>
+                </>
+              )}
+            </button>
+
+            {/* Test Connection Button */}
             <button
               onClick={handleTestConnection}
               disabled={testing}
-              className="whitespace-nowrap px-3.5 py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20 cursor-pointer"
+              className="whitespace-nowrap px-3 py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20 cursor-pointer"
             >
               {testing ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
