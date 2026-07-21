@@ -2,7 +2,7 @@ import { CardRecord, AuditResponse } from './types';
 import Tesseract from 'tesseract.js';
 
 export const DEFAULT_ENDPOINT = 'https://openrouter.ai/api/v1';
-export const DEFAULT_MODEL = 'google/gemini-2.0-flash-exp:free';
+export const DEFAULT_MODEL = 'openrouter/free';
 
 export async function testApiConnection(
   apiKey: string,
@@ -31,12 +31,12 @@ export async function testApiConnection(
     });
 
     if (response.ok) {
-      return { success: true, message: `Successfully connected to endpoint (${cleanEndpoint}) for model "${model}"!` };
+      return { success: true, message: `Successfully connected to ${cleanEndpoint}!` };
     } else {
       const errorText = await response.text();
       return { 
         success: false, 
-        message: `API returned status ${response.status}: ${errorText.slice(0, 120)}` 
+        message: `API status ${response.status}: ${errorText.slice(0, 120)}` 
       };
     }
   } catch (err: any) {
@@ -124,7 +124,7 @@ Each object in the array MUST have the exact following keys:
 Return ONLY valid JSON format without markdown blocks. Output must be a JSON array [ {...}, {...} ].`;
 
   const requestBody = {
-    model: model, // Passed directly without hardcoding!
+    model: model, // E.g. 'openrouter/free' or 'openrouter/auto'
     messages: [
       {
         role: 'user',
@@ -148,7 +148,7 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
     'X-Title': 'VC Pro Scanner'
   };
 
-  if (apiKey.trim()) {
+  if (apiKey && apiKey.trim()) {
     headers['Authorization'] = `Bearer ${apiKey.trim()}`;
   }
 
@@ -160,7 +160,10 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`AI Extraction failed (${res.status}): ${errText.slice(0, 200)}`);
+    if (res.status === 401) {
+      throw new Error(`OpenRouter Authentication Required (401). Please enter your free OpenRouter API Key from https://openrouter.ai/keys in the API Key box.`);
+    }
+    throw new Error(`AI Extraction failed (${res.status}): ${errText.slice(0, 180)}`);
   }
 
   const data = await res.json();

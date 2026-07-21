@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { testApiConnection, DEFAULT_ENDPOINT, DEFAULT_MODEL } from '@/lib/api-client';
-import { Key, Cpu, CheckCircle2, XCircle, Loader2, Zap, Globe, Edit3 } from 'lucide-react';
+import { testApiConnection } from '@/lib/api-client';
+import { Key, Cpu, CheckCircle2, XCircle, Loader2, Zap, Globe, ExternalLink } from 'lucide-react';
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -14,15 +14,15 @@ interface ModelSelectorProps {
 }
 
 const PRESET_MODELS = [
-  { id: 'google/gemini-2.0-flash-exp:free', label: '⚡ Gemini 2.0 Flash (Free / OpenRouter - Default)' },
-  { id: 'meta-llama/llama-3.2-90b-vision-instruct:free', label: '🦙 Llama 3.2 90B Vision (Free / OpenRouter)' },
-  { id: 'mistralai/pixtral-12b:free', label: '🎯 Pixtral 12B Vision (Free / OpenRouter)' },
-  { id: 'qwen/qwen-2-vl-7b-instruct:free', label: '👁️ Qwen 2 VL 7B Vision (Free / OpenRouter)' },
-  { id: 'google/gemini-flash-1.5', label: '✨ Gemini 1.5 Flash' },
-  { id: 'google/gemini-pro-1.5', label: '🚀 Gemini 1.5 Pro' },
-  { id: 'openai/gpt-4o-mini', label: '🤖 GPT-4o Mini (OpenAI)' },
-  { id: 'openai/gpt-4o', label: '🧠 GPT-4o Premium (OpenAI)' },
-  { id: 'anthropic/claude-3.5-sonnet', label: '🎭 Claude 3.5 Sonnet (Anthropic)' },
+  { id: 'openrouter/free', label: '⚡ openrouter/free (Auto Free Models - Default)' },
+  { id: 'openrouter/auto', label: '🤖 openrouter/auto (Auto Best Match)' },
+  { id: 'google/gemini-2.0-flash-exp:free', label: '✨ google/gemini-2.0-flash-exp:free' },
+  { id: 'meta-llama/llama-3.2-90b-vision-instruct:free', label: '🦙 meta-llama/llama-3.2-90b-vision-instruct:free' },
+  { id: 'mistralai/pixtral-12b:free', label: '🎯 mistralai/pixtral-12b:free' },
+  { id: 'google/gemini-flash-1.5', label: '✨ google/gemini-flash-1.5' },
+  { id: 'openai/gpt-4o-mini', label: '🤖 openai/gpt-4o-mini' },
+  { id: 'openai/gpt-4o', label: '🧠 openai/gpt-4o' },
+  { id: 'anthropic/claude-3.5-sonnet', label: '🎭 anthropic/claude-3.5-sonnet' },
   { id: 'tesseract-wasm', label: '⚙️ Tesseract WASM (C++ Engine - Offline)' },
   { id: 'custom', label: '✏️ Custom Model ID (Type manually...)' },
 ];
@@ -61,9 +61,11 @@ export default function ModelSelector({
         
         {/* 1. Model Selector */}
         <div>
-          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Cpu className="w-4 h-4 text-indigo-400" />
-            <span>AI Model / OCR Engine</span>
+          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-indigo-400" />
+              <span>AI Model / OCR Engine</span>
+            </span>
           </label>
           <div className="relative">
             <select
@@ -96,7 +98,7 @@ export default function ModelSelector({
             <div className="mt-2 relative">
               <input
                 type="text"
-                placeholder="e.g. meta-llama/llama-3.2-11b-vision-instruct:free"
+                placeholder="e.g. openrouter/free"
                 value={customModelText}
                 onChange={(e) => {
                   setCustomModelText(e.target.value);
@@ -130,10 +132,22 @@ export default function ModelSelector({
 
         {/* 3. API Key & Test Connection Button */}
         <div>
-          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Key className="w-4 h-4 text-amber-400" />
-            <span>API Key (BYOK / OpenRouter)</span>
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Key className="w-4 h-4 text-amber-400" />
+              <span>API Key</span>
+            </label>
+            <a
+              href="https://openrouter.ai/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-indigo-400 hover:underline flex items-center gap-0.5"
+            >
+              <span>Get Free Key</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+
           <div className="flex items-center gap-2">
             <input
               type="password"
