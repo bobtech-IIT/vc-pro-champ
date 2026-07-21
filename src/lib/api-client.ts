@@ -56,6 +56,42 @@ export async function compressImageForOcr(base64: string, maxDim: number = 2048,
   });
 }
 
+/**
+ * Client-Side Canvas Slicer for Multi-Card Sheet Photos (e.g. 3x3 Grid of 9 Cards)
+ */
+export async function sliceImageGrid(base64: string, rows: number = 3, cols: number = 3): Promise<string[]> {
+  if (typeof window === 'undefined') return [base64];
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
+    img.onload = () => {
+      // Only slice if image is large enough to contain multiple cards
+      if (img.width < 600 || img.height < 400) {
+        return resolve([base64]);
+      }
+
+      const tileW = Math.floor(img.width / cols);
+      const tileH = Math.floor(img.height / rows);
+      const tiles: string[] = [];
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const canvas = document.createElement('canvas');
+          canvas.width = tileW;
+          canvas.height = tileH;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, c * tileW, r * tileH, tileW, tileH, 0, 0, tileW, tileH);
+            tiles.push(canvas.toDataURL('image/jpeg', 0.92));
+          }
+        }
+      }
+      resolve(tiles.length === rows * cols ? tiles : [base64]);
+    };
+    img.onerror = () => resolve([base64]);
+  });
+}
+
 export async function testApiConnection(
   apiKey: string,
   model: string,
@@ -100,17 +136,12 @@ export async function testApiConnection(
   }
 }
 
-export async function extractCardDataWithTesseract(imageSrc: string): Promise<CardRecord> {
-  const result = await Tesseract.recognize(imageSrc, 'eng');
-  const rawText = result.data.text;
+/**
+ * Single Tile Parsing Engine for Tesseract WASM
+ */
+export function parseSingleCardFromLines(rawLines: string[], cardIdx: number = 0): CardRecord | null {
+  if (rawLines.length === 0) return null;
 
-  // Clean OCR noise glyphs (©, [0, Q, XX, @)
-  const cleanText = rawText
-    .replace(/[©®™\[\]]/g, '')
-    .replace(/\b[QXX0]\b/g, '');
-
-  const rawLines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
-  
   let name = '';
   let title = '';
   let company = '';
@@ -129,9 +160,8 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
   const webRegex = /(https?:\/\/)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
   const phoneRegex = /\+?\d{1,3}[\s.-]?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g;
   const titleRegex = /Manager|Director|Officer|Engineer|Architect|Lead|Head|President|Executive|Founder|CEO|CTO|CFO|COO|VP/i;
-  const companyRegex = /Solutions|Group|Technologies|Logistics|Designs|Innovations|Collaborative|Habitats|Systems|Services|Inc|Ltd|Corp|Pvt|LLC|Global|Media/i;
+  const companyRegex = /Solutions|Group|Technologies|Logistics|Designs|Innovations|Collaborative|Habitats|Systems|Services|Crafters|Inc|Ltd|Corp|Pvt|LLC|Global|Media/i;
 
-  // 1. Scan for Email, Website, Phones, LinkedIn, WhatsApp & GST/Tax ID
   for (const line of rawLines) {
     if (!email && emailRegex.test(line)) {
       email = line.match(emailRegex)?.[0] || '';
@@ -158,9 +188,7 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
   if (phonesFound.length > 0) mobile = phonesFound[0];
   if (phonesFound.length > 1) landline = phonesFound[1];
 
-  // 2. Classify Name, Title, Company & Address from lines
   for (const line of rawLines) {
-    // Skip lines with email/website/phone/notes
     if (emailRegex.test(line) || webRegex.test(line) || /LinkedIn:|WhatsApp:|Tax ID:/i.test(line)) continue;
 
     if (!title && titleRegex.test(line)) {
@@ -173,30 +201,29 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
       continue;
     }
 
-    if (!address && /Road|Street|Suite|Avenue|Salai|Block|Village|Building|Floor|London|Delhi|Bengaluru|Mumbai|Chennai|EC1V|UK|India/i.test(line)) {
+    if (!address && /Road|Street|Suite|Avenue|Salai|Block|Village|Building|Floor|London|Delhi|Bengaluru|Mumbai|Chennai|Gurgaon|Kolkata|EC1V|UK|India/i.test(line)) {
       address = line.replace(/^Company Address[\s,:-]*/i, '').trim();
       continue;
     }
 
-    // Name heuristic: 2-3 words, mostly alphabetic, not matching company/title
-    if (!name && line.length > 3 && line.length < 35 && !/\d/.test(line)) {
+    if (!name && line.length > 3 && line.length < 35 && !/\d/.test(line) && !/Email:|Mobile:|Landline:|Website:|Address:|City:|Country:/i.test(line)) {
       name = line;
     }
   }
 
-  // Fallback assign if needed
-  if (!name) name = rawLines[0] || 'Unknown Contact';
-  if (!company) company = rawLines[1] || 'Corporate Solutions';
+  if (!name && !email && !company && !mobile) return null;
 
-  // Capitalize Name
+  if (!name) name = rawLines[0] || 'Unknown Contact';
   name = name.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
 
-  // Extract City & Country
   if (address.includes('London')) city = 'London';
   if (address.includes('Bengaluru')) city = 'Bengaluru';
   if (address.includes('New Delhi')) city = 'New Delhi';
   if (address.includes('Mumbai')) city = 'Mumbai';
   if (address.includes('Chennai')) city = 'Chennai';
+  if (address.includes('Gurgaon')) city = 'Gurgaon';
+  if (address.includes('Kolkata')) city = 'Kolkata';
+
   if (address.includes('UK')) country = 'UK';
   if (address.includes('India')) country = 'India';
 
@@ -204,9 +231,11 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
   if (/tech|soft|code|ai|digital|system|solution/i.test(company + ' ' + title)) industry = 'Technology & IT Services';
   else if (/logistics|freight|transport|cargo/i.test(company)) industry = 'Logistics & Supply Chain';
   else if (/health|hospital|pharma|medical/i.test(company)) industry = 'Healthcare & Life Sciences';
+  else if (/design|media|creative|pr/i.test(company + ' ' + title)) industry = 'Media, Advertising & PR';
+  else if (/architect|build|realty|habitat/i.test(company + ' ' + title)) industry = 'Real Estate & Construction';
 
   return {
-    id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    id: `card-${Date.now()}-${cardIdx}-${Math.random().toString(36).substr(2, 4)}`,
     name,
     title,
     company,
@@ -218,8 +247,48 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
     address,
     city,
     country,
-    notes: notes || `Cleaned via Tesseract WASM OCR`
+    notes: notes || `Extracted via WASM OCR Engine`
   };
+}
+
+export async function extractCardDataWithTesseract(imageSrc: string): Promise<CardRecord[]> {
+  const result = await Tesseract.recognize(imageSrc, 'eng');
+  const rawText = result.data.text;
+
+  const cleanText = rawText
+    .replace(/[©®™\[\]]/g, '')
+    .replace(/\b[QXX0]\b/g, '');
+
+  const rawLines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
+  
+  // Check if rawText contains multiple email domains / email addresses (multi-card sheet)
+  const emailsInText = cleanText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi) || [];
+
+  if (emailsInText.length <= 1) {
+    const single = parseSingleCardFromLines(rawLines, 0);
+    return single ? [single] : [];
+  }
+
+  // Multi-card sheet detected in plain text: group lines by email blocks
+  const cards: CardRecord[] = [];
+  let currentBlock: string[] = [];
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+    currentBlock.push(line);
+
+    // End block if next line starts a new name/card header or at end of array
+    const isLastLine = i === rawLines.length - 1;
+    const isEmailLine = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i.test(line);
+
+    if ((isEmailLine && currentBlock.length >= 4) || isLastLine) {
+      const parsed = parseSingleCardFromLines(currentBlock, cards.length);
+      if (parsed) cards.push(parsed);
+      currentBlock = [];
+    }
+  }
+
+  return cards.length > 0 ? cards : [parseSingleCardFromLines(rawLines, 0)!].filter(Boolean);
 }
 
 /**
@@ -272,12 +341,18 @@ export async function extractCardDataWithAI(
   apiKey: string,
   endpoint: string = DEFAULT_ENDPOINT
 ): Promise<CardRecord[]> {
-  // Compress image client-side keeping high 2048px resolution for 3x3 multi-card grid sheets
+  // Compress image client-side keeping high 2048px resolution
   const compressedBase64 = await compressImageForOcr(imageBase64, 2048, 0.92);
 
+  // If using offline Tesseract WASM, slice into 3x3 grid tiles to extract all 9 cards reliably
   if (model === 'tesseract-wasm') {
-    const singleCard = await extractCardDataWithTesseract(compressedBase64);
-    return [singleCard];
+    const tiles = await sliceImageGrid(compressedBase64, 3, 3);
+    const allCards: CardRecord[] = [];
+    for (let i = 0; i < tiles.length; i++) {
+      const cardBatch = await extractCardDataWithTesseract(tiles[i]);
+      allCards.push(...cardBatch);
+    }
+    return allCards.length > 0 ? allCards : await extractCardDataWithTesseract(compressedBase64);
   }
 
   const effectiveKey = getEffectiveApiKey(apiKey);
@@ -288,8 +363,9 @@ export async function extractCardDataWithAI(
   const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
   const targetUrl = `${cleanEndpoint}/chat/completions`;
 
-  const prompt = `CRITICAL MANDATE: This image may contain ONE OR MULTIPLE visiting cards placed side-by-side or in a grid (e.g., 3x3 grid with 9 cards on a single sheet).
-Scan from top-left to bottom-right and extract EVERY SINGLE VISITING CARD present in the image into a JSON ARRAY. Do NOT stop after the first card! Extract all 2, 4, 6, 9 or more cards.
+  const prompt = `CRITICAL MANDATE: This image may contain MULTIPLE visiting cards placed in a grid (e.g. 3 rows x 3 columns = 9 cards).
+Scan systematically row by row from top-left to bottom-right and extract EVERY SINGLE VISITING CARD present in the image into a JSON ARRAY.
+Do NOT stop after 1 card! Extract all 2, 4, 6, 9 or more cards present on the sheet.
 
 Each card object in the JSON ARRAY must have these keys:
 "name", "title", "company", "industry", "email", "mobile", "landline", "website", "address", "city", "country", "notes".
@@ -341,12 +417,27 @@ Output MUST be strictly valid JSON starting with [ and ending with ].`;
   const data = await res.json();
   const rawContent = data.choices?.[0]?.message?.content || '';
 
-  const parsedCards = tryParseJson(rawContent);
+  let parsedCards = tryParseJson(rawContent);
+
+  // If AI vision model extracted only 1 card or failed to return JSON on a grid sheet, slice into 3x3 grid tiles to extract ALL 9 cards!
+  if (!parsedCards || parsedCards.length <= 1) {
+    console.warn('AI Vision returned single card or non-JSON for multi-card sheet. Triggering 3x3 Grid Slicer Fallback...');
+    const tiles = await sliceImageGrid(compressedBase64, 3, 3);
+    const gridCards: CardRecord[] = [];
+
+    for (let i = 0; i < tiles.length; i++) {
+      const tileCards = await extractCardDataWithTesseract(tiles[i]);
+      gridCards.push(...tileCards);
+    }
+
+    if (gridCards.length > 1) {
+      return gridCards;
+    }
+  }
 
   if (!parsedCards || parsedCards.length === 0) {
-    console.warn('AI Vision returned non-JSON text output. Falling back to local OCR engine...', rawContent);
-    const fallbackCard = await extractCardDataWithTesseract(compressedBase64);
-    return [fallbackCard];
+    const fallbackCards = await extractCardDataWithTesseract(compressedBase64);
+    return fallbackCards;
   }
 
   return parsedCards.map((c, index) => ({

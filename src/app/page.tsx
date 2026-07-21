@@ -162,8 +162,8 @@ export default function Home() {
               return await extractCardDataWithAI(imgBase64, selectedModel, apiKey, apiEndpoint);
             } catch (err) {
               console.warn('AI Extraction fallback notice:', err);
-              const fallback = await extractCardDataWithTesseract(imgBase64);
-              return [fallback];
+              const fallbackCards = await extractCardDataWithTesseract(imgBase64);
+              return fallbackCards;
             }
           })
         );
