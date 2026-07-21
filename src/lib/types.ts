@@ -3,6 +3,7 @@ export interface CardRecord {
   name: string;
   title: string;
   company: string;
+  industry: string;
   email: string;
   mobile: string;
   landline: string;
@@ -12,6 +13,8 @@ export interface CardRecord {
   country: string;
   notes?: string;
   is_duplicate?: boolean;
+  needs_verification?: boolean;
+  verification_reasons?: string[];
   [key: string]: any;
 }
 
@@ -23,6 +26,7 @@ export interface AuditStats {
   corrections_made: number;
   duplicates_found: number;
   missing_values_count: number;
+  flagged_verification_count?: number;
 }
 
 export interface AuditResponse {

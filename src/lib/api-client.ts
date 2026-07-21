@@ -88,11 +88,18 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
     }
   }
 
+  const company = lines[2] || 'Organization';
+  let industry = 'General Corporate';
+  if (/tech|soft|code|ai|digital|system/i.test(company)) industry = 'Technology & IT Services';
+  else if (/logistics|freight|transport|cargo/i.test(company)) industry = 'Logistics & Supply Chain';
+  else if (/health|hospital|pharma|medical/i.test(company)) industry = 'Healthcare & Life Sciences';
+
   return {
     id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     name: lines[0] || 'Unknown Name',
     title: lines[1] || 'Business Professional',
-    company: lines[2] || 'Organization',
+    company,
+    industry,
     email,
     mobile,
     landline,
@@ -117,7 +124,7 @@ export async function extractCardDataWithAI(
 
   const effectiveKey = getEffectiveApiKey(apiKey);
   if (!effectiveKey) {
-    throw new Error('API Key Missing: Please enter your OpenRouter API key (sk-or-v1-...) in the API Key box and click Save.');
+    throw new Error('API Key Missing: Please click the Settings button (⚙️) to enter and save your OpenRouter API Key.');
   }
 
   const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
@@ -131,11 +138,12 @@ Each object in the array MUST have the exact following keys:
 - "name": Full name of person
 - "title": Job designation/title
 - "company": Organization/Company name
+- "industry": Inferred industry sector (e.g. Technology & IT Services, Logistics & Supply Chain, Healthcare & Life Sciences, Banking & Finance, Real Estate & Construction, Retail & E-Commerce, etc.)
 - "email": Email address
 - "mobile": Mobile/Cell number
 - "landline": Office/Landline phone number
-- "website": Website URL
-- "address": Full street address
+- "website": Website URL (verify domain carefully, do NOT include spaces or bad numbers)
+- "address": Full street address (do NOT leak URLs or websites here)
 - "city": City name if detected
 - "country": Country name if detected
 - "notes": Any extra info (e.g. social handles, services)
@@ -177,7 +185,7 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
   if (!res.ok) {
     const errText = await res.text();
     if (res.status === 401) {
-      throw new Error(`OpenRouter Authentication Failed (401). Invalid API Key. Please verify your OpenRouter key at https://openrouter.ai/keys.`);
+      throw new Error(`OpenRouter Authentication Failed (401). Please click the Settings button (⚙️) to update your API key.`);
     }
     throw new Error(`AI Extraction failed (${res.status}): ${errText.slice(0, 180)}`);
   }
@@ -203,6 +211,7 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
     name: c.name || '',
     title: c.title || '',
     company: c.company || '',
+    industry: c.industry || 'General Corporate',
     email: c.email || '',
     mobile: c.mobile || '',
     landline: c.landline || '',
@@ -229,16 +238,69 @@ export async function runPythonAudit(cards: CardRecord[]): Promise<AuditResponse
     return await res.json();
   } catch (err) {
     console.warn('Fallback to client-side audit due to local server response:', err);
+    
+    // Client-Side Audit & Anomaly Detection Fallback
+    let corrections_made = 0;
+    let duplicates_found = 0;
+    let flagged_count = 0;
+    const audit_logs: string[] = [];
+
+    const processed = cards.map((card, idx) => {
+      const c = { ...card };
+      const reasons: string[] = [];
+
+      // Check website space / hallucination
+      if (c.website) {
+        if (c.website.includes(' ') || /000|2980|ecom/.test(c.website)) {
+          reasons.push(`Suspicious website format: '${c.website}'`);
+          audit_logs.push(`Row ${idx+1}: Flagged suspicious website: '${c.website}'`);
+        }
+      }
+
+      // Check address URL leak
+      if (c.address && /https?:\/\/|www\./i.test(c.address)) {
+        reasons.push(`URL leaked inside Address field: '${c.address}'`);
+        audit_logs.push(`Row ${idx+1}: Cleaned URL leak from address.`);
+        c.address = c.address.replace(/https?:\/\/\S+|www\.\S+/gi, '').trim();
+        corrections_made++;
+      }
+
+      // Check name/email match
+      if (c.name && c.email && c.email.includes('@')) {
+        const first = c.name.split(' ')[0].toLowerCase();
+        const user = c.email.split('@')[0].toLowerCase();
+        if (first.length > 3 && !user.includes(first.slice(0, 3))) {
+          if (!/info|contact|admin|sales|office/.test(user)) {
+            reasons.push(`Email username '${user}' might not match Name '${c.name}'`);
+          }
+        }
+      }
+
+      if (reasons.length > 0) {
+        c.needs_verification = true;
+        c.verification_reasons = reasons;
+        flagged_count++;
+      }
+
+      return c;
+    });
+
     return {
-      processed_cards: cards,
+      processed_cards: processed,
       stats: {
         total_cards: cards.length,
-        cleanliness_score: 95,
-        corrections_made: 2,
-        duplicates_found: 0,
-        missing_values_count: cards.reduce((acc, c) => acc + (c.email ? 0 : 1) + (c.mobile ? 0 : 1), 0)
+        cleanliness_score: maxScore(cards.length, corrections_made, flagged_count),
+        corrections_made,
+        duplicates_found,
+        missing_values_count: cards.reduce((acc, c) => acc + (c.email ? 0 : 1) + (c.mobile ? 0 : 1), 0),
+        flagged_verification_count: flagged_count
       },
-      audit_logs: ['Client-side audit performed successfully.']
+      audit_logs: audit_logs.length ? audit_logs : ['Client-side audit completed successfully.']
     };
   }
+}
+
+function maxScore(total: number, corrections: number, flagged: number): number {
+  if (total === 0) return 100;
+  return Math.max(20, Math.min(100, 100 - corrections * 2 - flagged * 5));
 }

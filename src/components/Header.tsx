@@ -1,16 +1,42 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { CreditCard, Download, Smartphone, Sparkles } from 'lucide-react';
+import React from 'react';
+import { CreditCard, Smartphone, MessageSquare } from 'lucide-react';
+import ModelSelectorModal from './ModelSelectorModal';
 
 interface HeaderProps {
   onInstallPwa?: () => void;
   canInstallPwa?: boolean;
+  isSettingsOpen: boolean;
+  onOpenSettingsChange: (open: boolean) => void;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+  apiKey: string;
+  onApiKeyChange: (key: string) => void;
+  apiEndpoint: string;
+  onApiEndpointChange: (endpoint: string) => void;
+  onSaveConfig: () => void;
+  onOpenQuickConnect: () => void;
+  hasCards: boolean;
 }
 
-export default function Header({ onInstallPwa, canInstallPwa }: HeaderProps) {
+export default function Header({
+  onInstallPwa,
+  canInstallPwa,
+  isSettingsOpen,
+  onOpenSettingsChange,
+  selectedModel,
+  onModelChange,
+  apiKey,
+  onApiKeyChange,
+  apiEndpoint,
+  onApiEndpointChange,
+  onSaveConfig,
+  onOpenQuickConnect,
+  hasCards,
+}: HeaderProps) {
   return (
-    <header className="sticky top-0 z-40 w-full backdrop-blur-xl bg-slate-950/80 border-b border-slate-800/80 px-4 lg:px-8 py-3.5 flex items-center justify-between">
+    <header className="sticky top-0 z-40 w-full backdrop-blur-xl bg-slate-950/85 border-b border-slate-800/80 px-4 lg:px-8 py-3 flex items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="relative p-2.5 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-emerald-400 text-white shadow-lg shadow-indigo-500/20">
           <CreditCard className="w-6 h-6" />
@@ -24,33 +50,50 @@ export default function Header({ onInstallPwa, canInstallPwa }: HeaderProps) {
             <h1 className="text-xl font-bold font-mono tracking-wider bg-gradient-to-r from-white via-slate-100 to-indigo-300 bg-clip-text text-transparent">
               VC PRO
             </h1>
-            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <span className="px-2 py-0.5 text-[10px] font-bold tracking-wide rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
               PWA 2-STAGE AI
             </span>
           </div>
           <p className="text-xs text-slate-400 hidden sm:block">
-            Visiting Card AI Extraction & Deep 10-Step Data Cleaning
+            Visiting Card AI Scanner & 10-Step EDA Data Audit
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
+        {/* Quick Connect Generator Button */}
+        <button
+          onClick={onOpenQuickConnect}
+          disabled={!hasCards}
+          className="px-3.5 py-2 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 text-indigo-200 disabled:opacity-40 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+          title="Generate Personalized Quick Connect Welcome Greetings"
+        >
+          <MessageSquare className="w-4 h-4 text-emerald-400" />
+          <span className="hidden md:inline">Quick Connect</span>
+        </button>
+
+        {/* Settings Button with Red/Green Breathing Pulse Status Light */}
+        <ModelSelectorModal
+          isOpen={isSettingsOpen}
+          onOpenChange={onOpenOpen => onOpenSettingsChange(onOpenOpen)}
+          selectedModel={selectedModel}
+          onModelChange={onModelChange}
+          apiKey={apiKey}
+          onApiKeyChange={onApiKeyChange}
+          apiEndpoint={apiEndpoint}
+          onApiEndpointChange={onApiEndpointChange}
+          onSaveConfig={onSaveConfig}
+        />
+
         {canInstallPwa && (
           <button
             onClick={onInstallPwa}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 shadow-md shadow-emerald-600/20 transition-all duration-200 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
           >
             <Smartphone className="w-4 h-4" />
-            <span>Install App</span>
+            <span className="hidden sm:inline">Install</span>
           </button>
         )}
-
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-          <span>Stage 1: WASM/Vision AI</span>
-          <span className="text-slate-600">•</span>
-          <span>Stage 2: Python Audit</span>
-        </div>
       </div>
     </header>
   );

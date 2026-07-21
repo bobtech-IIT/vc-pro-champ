@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
-import ModelSelector from '@/components/ModelSelector';
 import DashboardStats from '@/components/DashboardStats';
 import Dropzone from '@/components/Dropzone';
 import CameraScanner from '@/components/CameraScanner';
@@ -10,6 +9,7 @@ import DataTable from '@/components/DataTable';
 import WaterBreakModal from '@/components/WaterBreakModal';
 import TemplateMappingModal from '@/components/TemplateMappingModal';
 import AuditSummaryModal from '@/components/AuditSummaryModal';
+import QuickConnectModal from '@/components/QuickConnectModal';
 
 import { CardRecord, AuditStats } from '@/lib/types';
 import { extractCardDataWithAI, runPythonAudit, DEFAULT_ENDPOINT, DEFAULT_MODEL } from '@/lib/api-client';
@@ -25,13 +25,18 @@ import {
   Loader2, 
   ShieldCheck, 
   RotateCcw, 
-  AlertCircle 
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function Home() {
   // PWA Deferred Prompt
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [canInstallPwa, setCanInstallPwa] = useState(false);
+
+  // Modals & Popups State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isQuickConnectOpen, setIsQuickConnectOpen] = useState(false);
 
   // Model & Endpoint Config
   const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_MODEL);
@@ -73,6 +78,7 @@ export default function Home() {
     corrections_made: 0,
     duplicates_found: 0,
     missing_values_count: 0,
+    flagged_verification_count: 0
   });
   const [auditLogs, setAuditLogs] = useState<string[]>([]);
 
@@ -120,11 +126,10 @@ export default function Home() {
       return;
     }
 
-    // Auto-save configuration on process start
     handleSaveConfig();
 
     setProcessing(true);
-    setProcessStatus('Stage 1: Capturing text & fields with AI...');
+    setProcessStatus('Stage 1: Capturing text, fields & inferring industry...');
 
     try {
       const allExtractedCards: CardRecord[] = [];
@@ -146,7 +151,7 @@ export default function Home() {
         }
       }
 
-      setProcessStatus('Stage 2: Running Python Pandas EDA & 10-step audit...');
+      setProcessStatus('Stage 2: Python Pandas EDA, deduplication & zero-hallucination verification audit...');
       
       const auditResult = await runPythonAudit(allExtractedCards);
 
@@ -160,8 +165,9 @@ export default function Home() {
         total_cards: nextState.cards.length,
         cleanliness_score: auditResult.stats.cleanliness_score,
         corrections_made: prev.corrections_made + auditResult.stats.corrections_made,
-        duplicates_found: auditResult.stats.duplicates_found,
+        duplicates_found: prev.duplicates_found + auditResult.stats.duplicates_found,
         missing_values_count: auditResult.stats.missing_values_count,
+        flagged_verification_count: auditResult.stats.flagged_verification_count || 0
       }));
       setAuditLogs((prev) => [...auditResult.audit_logs, ...prev]);
 
@@ -215,6 +221,7 @@ export default function Home() {
       name: 'New Contact',
       title: '',
       company: '',
+      industry: 'General Corporate',
       email: '',
       mobile: '',
       landline: '',
@@ -238,14 +245,38 @@ export default function Home() {
         corrections_made: 0,
         duplicates_found: 0,
         missing_values_count: 0,
+        flagged_verification_count: 0
       });
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Header */}
-      <Header onInstallPwa={handleInstallPwa} canInstallPwa={canInstallPwa} />
+      {/* Header with Breathing Status LED Settings Modal button and Quick Connect */}
+      <Header
+        onInstallPwa={handleInstallPwa}
+        canInstallPwa={canInstallPwa}
+        isSettingsOpen={isSettingsOpen}
+        onOpenSettingsChange={setIsSettingsOpen}
+        selectedModel={selectedModel}
+        onModelChange={(m) => {
+          setSelectedModel(m);
+          if (typeof window !== 'undefined') localStorage.setItem('vcpro_selected_model', m);
+        }}
+        apiKey={apiKey}
+        onApiKeyChange={(k) => {
+          setApiKey(k);
+          if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_key', k);
+        }}
+        apiEndpoint={apiEndpoint}
+        onApiEndpointChange={(e) => {
+          setApiEndpoint(e);
+          if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_endpoint', e);
+        }}
+        onSaveConfig={handleSaveConfig}
+        onOpenQuickConnect={() => setIsQuickConnectOpen(true)}
+        hasCards={sessionState.cards.length > 0}
+      />
 
       {/* Water Break Cooldown Modal */}
       <WaterBreakModal
@@ -274,6 +305,13 @@ export default function Home() {
         cleanlinessScore={auditStats.cleanliness_score}
       />
 
+      {/* Quick Connect Welcome Message Modal */}
+      <QuickConnectModal
+        isOpen={isQuickConnectOpen}
+        onClose={() => setIsQuickConnectOpen(false)}
+        cards={sessionState.cards}
+      />
+
       {/* Camera Scanner Overlay */}
       {showCamera && (
         <CameraScanner
@@ -285,26 +323,6 @@ export default function Home() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
         
-        {/* Dynamic Model & Endpoint Selector with Save Button & Persistent Storage */}
-        <ModelSelector
-          selectedModel={selectedModel}
-          onModelChange={(m) => {
-            setSelectedModel(m);
-            if (typeof window !== 'undefined') localStorage.setItem('vcpro_selected_model', m);
-          }}
-          apiKey={apiKey}
-          onApiKeyChange={(k) => {
-            setApiKey(k);
-            if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_key', k);
-          }}
-          apiEndpoint={apiEndpoint}
-          onApiEndpointChange={(e) => {
-            setApiEndpoint(e);
-            if (typeof window !== 'undefined') localStorage.setItem('vcpro_api_endpoint', e);
-          }}
-          onSaveConfig={handleSaveConfig}
-        />
-
         {/* KPI Dashboard Stats */}
         <DashboardStats
           stats={auditStats}
@@ -320,7 +338,7 @@ export default function Home() {
                 Stage 1: Scan & Input Visiting Cards
               </h2>
               <p className="text-xs text-slate-400">
-                Drop multiple card photos, PDFs, or use mobile camera live capture.
+                Drop multiple card photos, PDFs, or use live camera capture. Deduplication & Industry classification run automatically.
               </p>
             </div>
 
@@ -381,7 +399,7 @@ export default function Home() {
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 text-xs text-indigo-300">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Stage 2 Audit Complete: {auditLogs.length} automated corrections and checks recorded.</span>
+              <span>Stage 2 Audit Complete: {auditLogs.length} automated corrections and verification checks recorded.</span>
             </div>
             <button
               onClick={() => setShowAuditModal(true)}
@@ -389,6 +407,18 @@ export default function Home() {
             >
               View Audit Logs
             </button>
+          </div>
+        )}
+
+        {/* Manual Verification Flagged Alert Banner */}
+        {sessionState.cards.some(c => c.needs_verification) && (
+          <div className="p-3.5 rounded-2xl bg-amber-950/50 border border-amber-500/40 text-xs text-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                Zero Hallucination Guard: {sessionState.cards.filter(c => c.needs_verification).length} row(s) flagged with suspicious OCR format (e.g. invalid website or email mismatch). Please double-check yellow rows in the table below.
+              </span>
+            </div>
           </div>
         )}
 
