@@ -1,0 +1,25 @@
+{
+  "name": "VC Pro - Visiting Card Scanner & AI Auditor",
+  "short_name": "VC Pro",
+  "description": "Scan visiting cards, capture text with AI, and clean data into high precision Excel files.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
