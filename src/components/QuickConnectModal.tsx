@@ -17,7 +17,7 @@ export default function QuickConnectModal({
   cards,
 }: QuickConnectModalProps) {
   const [mounted, setMounted] = useState(false);
-  const [selectedCardId, setSelectedCardId] = useState<string>(cards[0]?.id || '');
+  const [selectedCardId, setSelectedCardId] = useState<string>('');
   const [tone, setTone] = useState<'warm' | 'professional' | 'short'>('warm');
   const [copied, setCopied] = useState(false);
 
@@ -25,9 +25,21 @@ export default function QuickConnectModal({
     setMounted(true);
   }, []);
 
+  // Sync selected card whenever modal opens or cards change
+  useEffect(() => {
+    if (isOpen && cards.length > 0) {
+      const exists = cards.some(c => String(c.id).trim() === String(selectedCardId).trim());
+      if (!selectedCardId || !exists) {
+        setSelectedCardId(String(cards[0].id));
+      }
+    }
+  }, [isOpen, cards]);
+
   if (!isOpen) return null;
 
-  const selectedCard = cards.find((c) => c.id === selectedCardId) || cards[0];
+  const selectedCard = 
+    cards.find((c) => String(c.id).trim() === String(selectedCardId).trim()) || 
+    cards[0];
 
   const generateMessage = (card?: CardRecord, selectedTone: string = 'warm') => {
     if (!card) return 'Please select a contact from the dropdown above.';
@@ -95,14 +107,17 @@ export default function QuickConnectModal({
           <div className="relative">
             <select
               value={selectedCardId}
-              onChange={(e) => setSelectedCardId(e.target.value)}
+              onChange={(e) => {
+                const newId = e.target.value;
+                setSelectedCardId(newId);
+              }}
               className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/50 appearance-none cursor-pointer"
             >
               {cards.length === 0 ? (
                 <option value="">No contacts extracted yet</option>
               ) : (
                 cards.map((c) => (
-                  <option key={c.id} value={c.id}>
+                  <option key={c.id} value={String(c.id)}>
                     👤 {c.name || 'Unnamed'} — {c.title || 'Role'} ({c.company || 'Company'})
                   </option>
                 ))
@@ -114,24 +129,24 @@ export default function QuickConnectModal({
           </div>
         </div>
 
-        {/* Selected Contact Metadata Card */}
+        {/* Selected Contact Details Preview */}
         {selectedCard && (
-          <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1 text-slate-300">
-            <div className="flex items-center gap-2 font-medium text-white">
-              <span>{selectedCard.name}</span>
+          <div className="p-3.5 rounded-xl bg-slate-950/80 border border-indigo-500/30 text-xs space-y-1.5 text-slate-300">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-white">{selectedCard.name || 'Unnamed Contact'}</span>
               {selectedCard.industry && (
-                <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px]">
+                <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold">
                   {selectedCard.industry}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-4 text-[11px] text-slate-400">
+            <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-400 font-medium">
               <span className="flex items-center gap-1">
-                <Briefcase className="w-3 h-3 text-slate-500" />
+                <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
                 {selectedCard.title || 'No Title'}
               </span>
               <span className="flex items-center gap-1">
-                <Building2 className="w-3 h-3 text-slate-500" />
+                <Building2 className="w-3.5 h-3.5 text-emerald-400" />
                 {selectedCard.company || 'No Company'}
               </span>
             </div>
