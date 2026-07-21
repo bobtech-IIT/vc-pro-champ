@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { CardRecord } from '@/lib/types';
 import { MessageSquare, Copy, Check, X, Sparkles, User, Building2, Briefcase } from 'lucide-react';
 
@@ -15,9 +16,14 @@ export default function QuickConnectModal({
   onClose,
   cards,
 }: QuickConnectModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string>(cards[0]?.id || '');
   const [tone, setTone] = useState<'warm' | 'professional' | 'short'>('warm');
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -50,12 +56,12 @@ export default function QuickConnectModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in overflow-y-auto">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in overflow-y-auto">
       {/* Backdrop Click */}
       <div className="absolute inset-0 z-0" onClick={onClose} />
 
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 w-full max-w-lg shadow-2xl space-y-4 relative text-slate-100 my-auto z-10 max-h-[92vh] overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700/90 rounded-3xl p-5 sm:p-6 w-full max-w-lg shadow-2xl space-y-4 relative text-slate-100 my-auto z-10 max-h-[90vh] overflow-y-auto">
         
         {/* Header */}
         <div className="sticky top-0 bg-slate-900 z-10 pt-1 pb-3 border-b border-slate-800 flex items-center justify-between">
@@ -206,4 +212,6 @@ export default function QuickConnectModal({
       </div>
     </div>
   );
+
+  return mounted ? createPortal(modalContent, document.body) : null;
 }
