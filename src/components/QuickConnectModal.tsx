@@ -17,7 +17,7 @@ export default function QuickConnectModal({
   cards,
 }: QuickConnectModalProps) {
   const [mounted, setMounted] = useState(false);
-  const [selectedCardId, setSelectedCardId] = useState<string>('');
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [tone, setTone] = useState<'warm' | 'professional' | 'short'>('warm');
   const [copied, setCopied] = useState(false);
 
@@ -25,21 +25,18 @@ export default function QuickConnectModal({
     setMounted(true);
   }, []);
 
-  // Sync selected card whenever modal opens or cards change
+  // Ensure index is within valid bounds when cards list changes or modal opens
   useEffect(() => {
     if (isOpen && cards.length > 0) {
-      const exists = cards.some(c => String(c.id).trim() === String(selectedCardId).trim());
-      if (!selectedCardId || !exists) {
-        setSelectedCardId(String(cards[0].id));
+      if (selectedIndex >= cards.length || selectedIndex < 0) {
+        setSelectedIndex(0);
       }
     }
-  }, [isOpen, cards]);
+  }, [isOpen, cards, selectedIndex]);
 
   if (!isOpen) return null;
 
-  const selectedCard = 
-    cards.find((c) => String(c.id).trim() === String(selectedCardId).trim()) || 
-    cards[0];
+  const selectedCard = cards[selectedIndex] || cards[0];
 
   const generateMessage = (card?: CardRecord, selectedTone: string = 'warm') => {
     if (!card) return 'Please select a contact from the dropdown above.';
@@ -102,22 +99,22 @@ export default function QuickConnectModal({
         <div>
           <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
             <User className="w-4 h-4 text-indigo-400" />
-            <span>Select Contact</span>
+            <span>Select Contact ({cards.length} available)</span>
           </label>
           <div className="relative">
             <select
-              value={selectedCardId}
+              value={selectedIndex}
               onChange={(e) => {
-                const newId = e.target.value;
-                setSelectedCardId(newId);
+                const idx = Number(e.target.value);
+                setSelectedIndex(idx);
               }}
               className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/50 appearance-none cursor-pointer"
             >
               {cards.length === 0 ? (
-                <option value="">No contacts extracted yet</option>
+                <option value={0}>No contacts extracted yet</option>
               ) : (
-                cards.map((c) => (
-                  <option key={c.id} value={String(c.id)}>
+                cards.map((c, idx) => (
+                  <option key={c.id || idx} value={idx}>
                     👤 {c.name || 'Unnamed'} — {c.title || 'Role'} ({c.company || 'Company'})
                   </option>
                 ))
