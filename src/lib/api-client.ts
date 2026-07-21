@@ -107,8 +107,58 @@ export async function extractCardDataWithTesseract(imageSrc: string): Promise<Ca
     address: lines.slice(3).join(', '),
     city: '',
     country: '',
-    notes: `Raw text captured via WASM OCR: ${text.slice(0, 100)}...`
+    notes: `Captured via WASM OCR fallback: ${text.slice(0, 100)}...`
   };
+}
+
+/**
+ * Robust JSON Extractor & Parser
+ * Handles conversational text wrapper, trailing commas, linebreaks, and markdown blocks
+ */
+function tryParseJson(text: string): any[] | null {
+  if (!text || !text.trim()) return null;
+
+  // Step 1: Strip markdown block wrappers
+  let cleaned = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+
+  // Step 2: Direct parse
+  try {
+    const parsed = JSON.parse(cleaned);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch (e) {}
+
+  // Step 3: Extract JSON array using regex [ { ... } ]
+  const arrayMatch = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+  if (arrayMatch) {
+    try {
+      const parsed = JSON.parse(arrayMatch[0]);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {}
+  }
+
+  // Step 4: Extract JSON object { ... }
+  const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    try {
+      const parsed = JSON.parse(objectMatch[0]);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {}
+  }
+
+  // Step 5: Fix common JSON syntax errors (trailing commas, unescaped line breaks)
+  try {
+    const sanitized = cleaned
+      .replace(/,\s*([\]}])/g, '$1')
+      .replace(/(["'])\s*\n\s*(["'])/g, '$1 $2');
+    
+    const arrayMatch2 = sanitized.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (arrayMatch2) {
+      const parsed = JSON.parse(arrayMatch2[0]);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    }
+  } catch (e) {}
+
+  return null;
 }
 
 export async function extractCardDataWithAI(
@@ -148,7 +198,7 @@ Each object in the array MUST have the exact following keys:
 - "country": Country name if detected
 - "notes": Any extra info (e.g. social handles, services)
 
-Return ONLY valid JSON format without markdown blocks. Output must be a JSON array [ {...}, {...} ].`;
+CRITICAL MANDATE: Output MUST be strictly valid JSON format only, starting with [ and ending with ]. Do NOT add conversational introductory or concluding text.`;
 
   const requestBody = {
     model: model || DEFAULT_MODEL,
@@ -191,19 +241,15 @@ Return ONLY valid JSON format without markdown blocks. Output must be a JSON arr
   }
 
   const data = await res.json();
-  const rawContent = data.choices?.[0]?.message?.content || '[]';
-  
-  const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
-  
-  let parsedCards: any[] = [];
-  try {
-    parsedCards = JSON.parse(cleanJson);
-    if (!Array.isArray(parsedCards)) {
-      parsedCards = [parsedCards];
-    }
-  } catch {
-    console.error('Failed to parse JSON response:', rawContent);
-    throw new Error('Model response could not be parsed into structured JSON.');
+  const rawContent = data.choices?.[0]?.message?.content || '';
+
+  // Attempt robust JSON parsing
+  const parsedCards = tryParseJson(rawContent);
+
+  if (!parsedCards || parsedCards.length === 0) {
+    console.warn('AI Vision returned non-JSON text output. Falling back to local OCR engine...', rawContent);
+    const fallbackCard = await extractCardDataWithTesseract(imageBase64);
+    return [fallbackCard];
   }
 
   return parsedCards.map((c, index) => ({

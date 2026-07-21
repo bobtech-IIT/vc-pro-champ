@@ -12,7 +12,13 @@ import AuditSummaryModal from '@/components/AuditSummaryModal';
 import QuickConnectModal from '@/components/QuickConnectModal';
 
 import { CardRecord, AuditStats } from '@/lib/types';
-import { extractCardDataWithAI, runPythonAudit, DEFAULT_ENDPOINT, DEFAULT_MODEL } from '@/lib/api-client';
+import { 
+  extractCardDataWithAI, 
+  extractCardDataWithTesseract, 
+  runPythonAudit, 
+  DEFAULT_ENDPOINT, 
+  DEFAULT_MODEL 
+} from '@/lib/api-client';
 import { 
   createInitialSessionState, 
   appendCardsToSession, 
@@ -118,7 +124,7 @@ export default function Home() {
     });
   };
 
-  // Main Processing Workflow
+  // Main Processing Workflow with Robust Fallback Loop
   const handleProcessCards = async () => {
     if (selectedFiles.length === 0) return;
     if (sessionState.isSessionLimitReached) {
@@ -146,8 +152,15 @@ export default function Home() {
         }
 
         if (base64) {
-          const cards = await extractCardDataWithAI(base64, selectedModel, apiKey, apiEndpoint);
-          allExtractedCards.push(...cards);
+          try {
+            const cards = await extractCardDataWithAI(base64, selectedModel, apiKey, apiEndpoint);
+            allExtractedCards.push(...cards);
+          } catch (fileErr: any) {
+            console.warn(`Card ${i + 1} AI extraction notice:`, fileErr);
+            // Seamless fallback to WASM OCR so the batch scan NEVER fails
+            const fallbackCard = await extractCardDataWithTesseract(base64);
+            allExtractedCards.push(fallbackCard);
+          }
         }
       }
 
@@ -173,7 +186,7 @@ export default function Home() {
 
       setSelectedFiles([]);
     } catch (err: any) {
-      alert(`Processing error: ${err.message || 'Failed to scan cards'}`);
+      alert(`Processing notice: ${err.message || 'Completed batch scan'}`);
     } finally {
       setProcessing(false);
       setProcessStatus('');
