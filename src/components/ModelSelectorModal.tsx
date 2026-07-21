@@ -148,39 +148,46 @@ export default function ModelSelectorModal({
         </div>
       </button>
 
-      {/* Settings Pop-up Modal Dialog */}
+      {/* Settings Pop-up Modal Dialog (Center-Right Aligned & Scrollable) */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 w-full max-w-xl shadow-2xl space-y-5 relative text-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-end p-3 sm:p-6 lg:p-8 bg-slate-950/80 backdrop-blur-md animate-fade-in overflow-y-auto">
+          {/* Backdrop Click Listener */}
+          <div 
+            className="absolute inset-0 z-0" 
+            onClick={() => onOpenChange(false)} 
+          />
+
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 sm:p-6 w-full max-w-lg shadow-2xl relative text-slate-100 my-auto z-10 max-h-[92vh] overflow-y-auto space-y-4">
             
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            {/* Modal Sticky Header */}
+            <div className="sticky top-0 bg-slate-900 z-10 pt-1 pb-3 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
                   <Settings className="w-5 h-5 text-indigo-400" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    AI Engine & API Configuration
+                    AI Engine & API Settings
                     <div className="flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
                       <span className={`w-2 h-2 rounded-full ${isConnectionOk ? 'bg-emerald-400' : 'bg-rose-400'}`} />
                       {isConnectionOk ? 'Connected' : 'Action Needed'}
                     </div>
                   </h3>
-                  <p className="text-xs text-slate-400">Select AI OCR provider, API Endpoint URL, and API key.</p>
+                  <p className="text-xs text-slate-400">Configure AI model, Endpoint URL, and API key.</p>
                 </div>
               </div>
 
               <button
                 onClick={() => onOpenChange(false)}
-                className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer border border-slate-700"
+                title="Close Settings Window"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Config Form */}
-            <div className="space-y-4">
+            {/* Config Form Body */}
+            <div className="space-y-4 pt-1">
               
               {/* 1. Model Selector */}
               <div>
@@ -251,7 +258,7 @@ export default function ModelSelectorModal({
               </div>
 
               {/* 3. API Key & Form */}
-              <form onSubmit={handleSaveAndClose} className="space-y-2">
+              <form onSubmit={handleSaveAndClose} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                     <Key className="w-4 h-4 text-amber-400" />
@@ -295,7 +302,7 @@ export default function ModelSelectorModal({
                 </div>
 
                 {/* Modal Footer Actions */}
-                <div className="pt-3 flex items-center justify-between gap-3 border-t border-slate-800 mt-4">
+                <div className="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 mt-4">
                   <button
                     type="button"
                     onClick={handleTestConnection}
