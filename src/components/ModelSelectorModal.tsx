@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { testApiConnection } from '@/lib/api-client';
+import { testApiConnection, PROVIDER_CONFIGS, DEFAULT_ENDPOINT, DEFAULT_MODEL } from '@/lib/api-client';
 import { 
   Settings, 
   Key, 
@@ -17,7 +17,9 @@ import {
   Check, 
   Eye, 
   EyeOff, 
-  X 
+  X,
+  Sparkles,
+  Server
 } from 'lucide-react';
 
 interface ModelSelectorModalProps {
@@ -32,20 +34,6 @@ interface ModelSelectorModalProps {
   onSaveConfig: () => void;
 }
 
-const PRESET_MODELS = [
-  { id: 'openrouter/free', label: '⚡ openrouter/free (Auto Free Models - Default)' },
-  { id: 'openrouter/auto', label: '🤖 openrouter/auto (Auto Best Match)' },
-  { id: 'google/gemini-2.0-flash-exp:free', label: '✨ google/gemini-2.0-flash-exp:free' },
-  { id: 'meta-llama/llama-3.2-90b-vision-instruct:free', label: '🦙 meta-llama/llama-3.2-90b-vision-instruct:free' },
-  { id: 'mistralai/pixtral-12b:free', label: '🎯 mistralai/pixtral-12b:free' },
-  { id: 'google/gemini-flash-1.5', label: '✨ google/gemini-flash-1.5' },
-  { id: 'openai/gpt-4o-mini', label: '🤖 openai/gpt-4o-mini' },
-  { id: 'openai/gpt-4o', label: '🧠 openai/gpt-4o' },
-  { id: 'anthropic/claude-3.5-sonnet', label: '🎭 anthropic/claude-3.5-sonnet' },
-  { id: 'tesseract-wasm', label: '⚙️ Tesseract WASM (C++ Engine - Offline)' },
-  { id: 'custom', label: '✏️ Custom Model ID (Type manually...)' },
-];
-
 export default function ModelSelectorModal({
   isOpen,
   onOpenChange,
@@ -58,41 +46,54 @@ export default function ModelSelectorModal({
   onSaveConfig,
 }: ModelSelectorModalProps) {
   const [mounted, setMounted] = useState(false);
-  const [isCustomModel, setIsCustomModel] = useState(
-    !PRESET_MODELS.some(m => m.id === selectedModel && m.id !== 'custom')
-  );
-  const [customModelText, setCustomModelText] = useState(
-    PRESET_MODELS.some(m => m.id === selectedModel) ? '' : selectedModel
-  );
-
+  const [activeTab, setActiveTab] = useState<'openrouter' | 'gemini' | 'groq' | 'omniroute' | 'custom'>('openrouter');
+  
+  const [customModelText, setCustomModelText] = useState(selectedModel || DEFAULT_MODEL);
   const [testing, setTesting] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  // Status Light state: green if connected/has key, red if unconfigured
-  const [isConnectionOk, setIsConnectionOk] = useState<boolean>(false);
-
-  const activeModelId = isCustomModel ? customModelText : selectedModel;
+  const [isConnectionOk, setIsConnectionOk] = useState<boolean>(true);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Infer provider tab from initial props
   useEffect(() => {
-    if (selectedModel === 'tesseract-wasm' || (apiKey && apiKey.trim().length > 5)) {
-      setIsConnectionOk(true);
+    if (apiEndpoint.includes('googleapis.com')) {
+      setActiveTab('gemini');
+    } else if (apiEndpoint.includes('groq.com')) {
+      setActiveTab('groq');
+    } else if (apiEndpoint.includes('localhost:20128') || apiEndpoint.includes('omniroute')) {
+      setActiveTab('omniroute');
+    } else if (apiEndpoint.includes('openrouter.ai') || !apiEndpoint) {
+      setActiveTab('openrouter');
     } else {
-      setIsConnectionOk(false);
+      setActiveTab('custom');
     }
-  }, [apiKey, selectedModel]);
+  }, [apiEndpoint]);
+
+  const currentProvider = PROVIDER_CONFIGS[activeTab] || PROVIDER_CONFIGS.openrouter;
+
+  const handleTabSwitch = (tabKey: 'openrouter' | 'gemini' | 'groq' | 'omniroute' | 'custom') => {
+    setActiveTab(tabKey);
+    const config = PROVIDER_CONFIGS[tabKey];
+    if (config) {
+      onApiEndpointChange(config.defaultEndpoint);
+      if (config.models.length > 0 && tabKey !== 'custom') {
+        onModelChange(config.models[0].id);
+      }
+    }
+    setTestResult(null);
+  };
 
   const handleSaveAndClose = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     onSaveConfig();
     if (typeof window !== 'undefined') {
       localStorage.setItem('vcpro_api_key', apiKey);
-      localStorage.setItem('vcpro_selected_model', activeModelId);
+      localStorage.setItem('vcpro_selected_model', selectedModel);
       localStorage.setItem('vcpro_api_endpoint', apiEndpoint);
     }
     setSavedSuccess(true);
@@ -106,7 +107,7 @@ export default function ModelSelectorModal({
   const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
-    const result = await testApiConnection(apiKey, activeModelId, apiEndpoint);
+    const result = await testApiConnection(apiKey, selectedModel, apiEndpoint);
     setTestResult(result);
     setTesting(false);
 
@@ -115,12 +116,9 @@ export default function ModelSelectorModal({
       onSaveConfig();
       if (typeof window !== 'undefined') {
         localStorage.setItem('vcpro_api_key', apiKey);
-        localStorage.setItem('vcpro_selected_model', activeModelId);
+        localStorage.setItem('vcpro_selected_model', selectedModel);
         localStorage.setItem('vcpro_api_endpoint', apiEndpoint);
       }
-      setTimeout(() => {
-        onOpenChange(false);
-      }, 1500);
     } else {
       setIsConnectionOk(false);
     }
@@ -128,15 +126,11 @@ export default function ModelSelectorModal({
 
   const modalContent = isOpen ? (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
-      {/* Backdrop Click Listener */}
-      <div 
-        className="absolute inset-0 z-0" 
-        onClick={() => onOpenChange(false)} 
-      />
+      <div className="absolute inset-0 z-0" onClick={() => onOpenChange(false)} />
 
       <div className="bg-slate-900 border border-slate-700/90 rounded-3xl p-5 sm:p-6 w-full max-w-xl shadow-2xl relative text-slate-100 my-auto z-10 max-h-[90vh] overflow-y-auto space-y-4">
         
-        {/* Modal Sticky Header */}
+        {/* Sticky Header */}
         <div className="sticky top-0 bg-slate-900 z-10 pt-1 pb-3 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
@@ -144,13 +138,13 @@ export default function ModelSelectorModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                AI Engine & API Settings
+                AI Engine & Provider Settings
                 <div className="flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
                   <span className={`w-2 h-2 rounded-full ${isConnectionOk ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                  {isConnectionOk ? 'Connected' : 'Action Needed'}
+                  {isConnectionOk ? 'Connected' : 'Configure Provider'}
                 </div>
               </h3>
-              <p className="text-xs text-slate-400">Configure AI model provider, Endpoint URL, and API key.</p>
+              <p className="text-xs text-slate-400">Select AI Vision Provider, Endpoint URL & API Key.</p>
             </div>
           </div>
 
@@ -163,60 +157,81 @@ export default function ModelSelectorModal({
           </button>
         </div>
 
+        {/* Provider Tabs */}
+        <div className="grid grid-cols-5 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-semibold">
+          {[
+            { id: 'openrouter', label: 'OpenRouter' },
+            { id: 'gemini', label: 'Gemini' },
+            { id: 'groq', label: 'Groq' },
+            { id: 'omniroute', label: 'OmniRoute' },
+            { id: 'custom', label: 'Custom' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabSwitch(tab.id as any)}
+              className={`py-2 rounded-lg transition-all text-center cursor-pointer ${
+                activeTab === tab.id
+                  ? 'bg-indigo-600 text-white shadow-md font-bold'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* Config Form Body */}
         <div className="space-y-4 pt-1">
           
-          {/* 1. Model Selector */}
+          {/* Model Selector for Active Provider */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Cpu className="w-4 h-4 text-indigo-400" />
-              <span>AI Model / OCR Engine</span>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Cpu className="w-4 h-4 text-indigo-400" />
+                <span>AI Vision Model</span>
+              </span>
+              <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> Auto Free Model Fallback Active
+              </span>
             </label>
-            <div className="relative">
-              <select
-                value={isCustomModel ? 'custom' : selectedModel}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'custom') {
-                    setIsCustomModel(true);
-                  } else {
-                    setIsCustomModel(false);
-                    onModelChange(val);
-                  }
-                  setTestResult(null);
-                }}
-                className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none cursor-pointer"
-              >
-                {PRESET_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
-                ▼
-              </div>
-            </div>
 
-            {isCustomModel && (
-              <div className="mt-2 relative">
-                <input
-                  type="text"
-                  placeholder="e.g. openrouter/free"
-                  value={customModelText}
+            {activeTab !== 'custom' ? (
+              <div className="relative">
+                <select
+                  value={selectedModel}
                   onChange={(e) => {
-                    setCustomModelText(e.target.value);
                     onModelChange(e.target.value);
                     setTestResult(null);
                   }}
-                  className="w-full bg-slate-950 border border-indigo-500 text-white placeholder-slate-500 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none cursor-pointer"
+                >
+                  {currentProvider.models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                  ▼
+                </div>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="e.g. openrouter/free or gemini-3.5-flash-lite"
+                  value={selectedModel}
+                  onChange={(e) => {
+                    onModelChange(e.target.value);
+                    setTestResult(null);
+                  }}
+                  className="w-full bg-slate-950 border border-indigo-500 text-white placeholder-slate-500 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-indigo-400 font-mono">Custom ID</span>
               </div>
             )}
           </div>
 
-          {/* 2. API Endpoint Input */}
+          {/* API Endpoint Input */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Globe className="w-4 h-4 text-cyan-400" />
@@ -224,7 +239,7 @@ export default function ModelSelectorModal({
             </label>
             <input
               type="text"
-              placeholder="https://openrouter.ai/api/v1"
+              placeholder={currentProvider.defaultEndpoint}
               value={apiEndpoint}
               onChange={(e) => {
                 onApiEndpointChange(e.target.value);
@@ -234,48 +249,47 @@ export default function ModelSelectorModal({
             />
           </div>
 
-          {/* 3. API Key & Form */}
+          {/* API Key Input */}
           <form onSubmit={handleSaveAndClose} className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Key className="w-4 h-4 text-amber-400" />
                 <span>API Key</span>
               </label>
-              <a
-                href="https://openrouter.ai/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-indigo-400 hover:underline flex items-center gap-0.5"
-              >
-                <span>Get Free OpenRouter Key</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+              {currentProvider.keyUrl && (
+                <a
+                  href={currentProvider.keyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-indigo-400 hover:underline flex items-center gap-0.5"
+                >
+                  <span>Get {currentProvider.name} Key</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
             </div>
 
             <div className="relative">
               <input
-                id="openrouter_api_key_modal"
-                name="openrouter_api_key_modal"
+                id="provider_api_key_modal"
+                name="provider_api_key_modal"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
-                placeholder={activeModelId === 'tesseract-wasm' ? 'No key required' : 'sk-or-v1-...'}
-                disabled={activeModelId === 'tesseract-wasm'}
+                placeholder={activeTab === 'openrouter' ? 'Optional for openrouter/free (or enter sk-or-v1-...)' : 'Enter your provider API key'}
                 value={apiKey}
                 onChange={(e) => {
                   onApiKeyChange(e.target.value);
                   setTestResult(null);
                 }}
-                className="w-full bg-slate-950 border border-slate-700 text-white placeholder-slate-500 rounded-xl pl-3.5 pr-10 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-50"
+                className="w-full bg-slate-950 border border-slate-700 text-white placeholder-slate-500 rounded-xl pl-3.5 pr-10 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/50"
               />
-              {activeModelId !== 'tesseract-wasm' && (
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
 
             {/* Modal Footer Actions */}
@@ -351,16 +365,14 @@ export default function ModelSelectorModal({
 
   return (
     <>
-      {/* Settings Header Button */}
       <button
         onClick={() => onOpenChange(true)}
         className="px-3.5 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs font-semibold flex items-center gap-2.5 transition-all shadow-md cursor-pointer hover:border-slate-600"
-        title="Configure AI Model & API Key"
+        title="Configure AI Engine & API Key"
       >
         <Settings className="w-4 h-4 text-indigo-400 animate-spin-slow" />
         <span className="hidden sm:inline">Settings</span>
 
-        {/* Breathing Status LED */}
         <div className="relative flex items-center justify-center w-3 h-3">
           <span
             className={`absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping ${
@@ -377,7 +389,6 @@ export default function ModelSelectorModal({
         </div>
       </button>
 
-      {/* Render Modal into document.body using Portal */}
       {mounted && modalContent && createPortal(modalContent, document.body)}
     </>
   );

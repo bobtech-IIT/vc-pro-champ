@@ -14,7 +14,6 @@ import QuickConnectModal from '@/components/QuickConnectModal';
 import { CardRecord, AuditStats } from '@/lib/types';
 import { 
   extractCardDataWithAI, 
-  extractCardDataWithTesseract, 
   runPythonAudit, 
   DEFAULT_ENDPOINT, 
   DEFAULT_MODEL 
@@ -160,10 +159,9 @@ export default function Home() {
           chunk.map(async (imgBase64) => {
             try {
               return await extractCardDataWithAI(imgBase64, selectedModel, apiKey, apiEndpoint);
-            } catch (err) {
-              console.warn('AI Extraction fallback notice:', err);
-              const fallbackCards = await extractCardDataWithTesseract(imgBase64);
-              return fallbackCards;
+            } catch (err: any) {
+              console.error('AI Vision Extraction error:', err);
+              throw new Error(err.message || 'AI Vision extraction failed. Please check your model or API key.');
             }
           })
         );

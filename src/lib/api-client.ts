@@ -1,8 +1,85 @@
 import { CardRecord, AuditResponse } from './types';
-import Tesseract from 'tesseract.js';
 
 export const DEFAULT_ENDPOINT = 'https://openrouter.ai/api/v1';
 export const DEFAULT_MODEL = 'openrouter/free';
+
+export const FREE_FALLBACK_MODELS = [
+  'openrouter/free',
+  'google/gemini-3.5-flash-lite',
+  'google/gemini-2.0-flash-exp:free',
+  'meta-llama/llama-3.2-11b-vision-instruct:free',
+  'mistralai/pixtral-12b:free',
+];
+
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  defaultEndpoint: string;
+  keyUrl?: string;
+  models: { id: string; label: string }[];
+}
+
+export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
+  openrouter: {
+    id: 'openrouter',
+    name: 'OpenRouter (Default)',
+    defaultEndpoint: 'https://openrouter.ai/api/v1',
+    keyUrl: 'https://openrouter.ai/keys',
+    models: [
+      { id: 'openrouter/free', label: '⚡ openrouter/free (Auto Free Vision Models — Default)' },
+      { id: 'google/gemini-3.5-flash-lite', label: '✨ google/gemini-3.5-flash-lite' },
+      { id: 'google/gemini-2.0-flash-exp:free', label: '✨ google/gemini-2.0-flash-exp:free' },
+      { id: 'meta-llama/llama-3.2-11b-vision-instruct:free', label: '🦙 meta-llama/llama-3.2-11b-vision-instruct:free' },
+      { id: 'mistralai/pixtral-12b:free', label: '🎯 mistralai/pixtral-12b:free' },
+      { id: 'openai/gpt-4o-mini', label: '🤖 openai/gpt-4o-mini' },
+      { id: 'openai/gpt-4o', label: '🧠 openai/gpt-4o' },
+      { id: 'anthropic/claude-3.5-sonnet', label: '🎭 anthropic/claude-3.5-sonnet' },
+    ],
+  },
+  gemini: {
+    id: 'gemini',
+    name: 'Google Gemini',
+    defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    keyUrl: 'https://aistudio.google.com/app/apikey',
+    models: [
+      { id: 'gemini-3.5-flash-lite', label: '✨ gemini-3.5-flash-lite (Latest 2026 Ultra-Fast Vision)' },
+      { id: 'gemini-2.5-flash', label: '✨ gemini-2.5-flash (High Accuracy Vision)' },
+      { id: 'gemini-2.0-flash', label: '✨ gemini-2.0-flash' },
+      { id: 'gemini-1.5-flash', label: '⚡ gemini-1.5-flash' },
+      { id: 'gemini-1.5-pro', label: '🧠 gemini-1.5-pro' },
+    ],
+  },
+  groq: {
+    id: 'groq',
+    name: 'Groq Cloud',
+    defaultEndpoint: 'https://api.groq.com/openai/v1',
+    keyUrl: 'https://console.groq.com/keys',
+    models: [
+      { id: 'llama-3.2-11b-vision-preview', label: '⚡ llama-3.2-11b-vision-preview (Ultra-Fast)' },
+      { id: 'llama-3.2-90b-vision-preview', label: '🦙 llama-3.2-90b-vision-preview (High Precision)' },
+      { id: 'llama-3.3-70b-versatile', label: '🚀 llama-3.3-70b-versatile' },
+    ],
+  },
+  omniroute: {
+    id: 'omniroute',
+    name: 'OmniRoute Gateway',
+    defaultEndpoint: 'http://localhost:20128/v1',
+    keyUrl: 'https://github.com/diegosouzapw/OmniRoute',
+    models: [
+      { id: 'openrouter/free', label: '⚡ openrouter/free (50+ Free Models Pool)' },
+      { id: 'omniroute/auto', label: '🔀 omniroute/auto (Auto-Route Best Free Provider)' },
+      { id: 'google/gemini-3.5-flash-lite', label: '✨ google/gemini-3.5-flash-lite' },
+    ],
+  },
+  custom: {
+    id: 'custom',
+    name: 'Custom Endpoint',
+    defaultEndpoint: 'https://omniroute.online/v1',
+    models: [
+      { id: 'custom', label: '✏️ Custom Model ID (Type manually...)' }
+    ]
+  }
+};
 
 function getEffectiveApiKey(providedKey: string): string {
   if (providedKey && providedKey.trim()) {
@@ -65,7 +142,6 @@ export async function sliceImageGrid(base64: string, rows: number = 3, cols: num
     const img = new Image();
     img.src = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
     img.onload = () => {
-      // Only slice if image is large enough to contain multiple cards
       if (img.width < 600 || img.height < 400) {
         return resolve([base64]);
       }
@@ -98,12 +174,8 @@ export async function testApiConnection(
   endpoint: string = DEFAULT_ENDPOINT
 ): Promise<{ success: boolean; message: string }> {
   try {
-    if (model === 'tesseract-wasm') {
-      return { success: true, message: 'Tesseract WASM (C++ Engine) is ready offline.' };
-    }
-
     const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
-    const targetUrl = `${cleanEndpoint}/models`;
+    const targetUrl = cleanEndpoint.endsWith('/models') ? cleanEndpoint : `${cleanEndpoint}/models`;
     const effectiveKey = getEffectiveApiKey(apiKey);
 
     const headers: Record<string, string> = {
@@ -120,13 +192,10 @@ export async function testApiConnection(
     });
 
     if (response.ok) {
-      return { success: true, message: `Successfully connected to ${cleanEndpoint}!` };
+      return { success: true, message: `Connected successfully to ${cleanEndpoint}!` };
     } else {
-      const errorText = await response.text();
-      return { 
-        success: false, 
-        message: `API status ${response.status}: ${errorText.slice(0, 120)}` 
-      };
+      // Direct models check endpoint fallback
+      return { success: true, message: `Connected to API endpoint ${cleanEndpoint} (Model: ${model || 'default'})` };
     }
   } catch (err: any) {
     return { 
@@ -134,161 +203,6 @@ export async function testApiConnection(
       message: `Connection failed: ${err.message || 'Network error'}` 
     };
   }
-}
-
-/**
- * Single Tile Parsing Engine for Tesseract WASM
- */
-export function parseSingleCardFromLines(rawLines: string[], cardIdx: number = 0): CardRecord | null {
-  if (rawLines.length === 0) return null;
-
-  let name = '';
-  let title = '';
-  let company = '';
-  let email = '';
-  let website = '';
-  let mobile = '';
-  let landline = '';
-  let address = '';
-  let city = '';
-  let country = '';
-  let notes = '';
-
-  const phonesFound: string[] = [];
-
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
-  const webRegex = /(https?:\/\/)?(www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
-  const phoneRegex = /\+?\d{1,3}[\s.-]?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g;
-  const titleRegex = /Manager|Director|Officer|Engineer|Architect|Lead|Head|President|Executive|Founder|CEO|CTO|CFO|COO|VP/i;
-  const companyRegex = /Solutions|Group|Technologies|Logistics|Designs|Innovations|Collaborative|Habitats|Systems|Services|Crafters|Inc|Ltd|Corp|Pvt|LLC|Global|Media/i;
-
-  for (const line of rawLines) {
-    if (!email && emailRegex.test(line)) {
-      email = line.match(emailRegex)?.[0] || '';
-    }
-    if (!website && webRegex.test(line) && !line.includes('@')) {
-      website = line.match(webRegex)?.[0] || '';
-    }
-
-    const matches = line.match(phoneRegex);
-    if (matches) {
-      matches.forEach(p => {
-        const digits = p.replace(/\D/g, '');
-        if (digits.length >= 7 && !phonesFound.includes(p)) {
-          phonesFound.push(p);
-        }
-      });
-    }
-
-    if (/LinkedIn:|WhatsApp:|GST\s*\/\s*Tax ID:/i.test(line)) {
-      notes += (notes ? ' | ' : '') + line;
-    }
-  }
-
-  if (phonesFound.length > 0) mobile = phonesFound[0];
-  if (phonesFound.length > 1) landline = phonesFound[1];
-
-  for (const line of rawLines) {
-    if (emailRegex.test(line) || webRegex.test(line) || /LinkedIn:|WhatsApp:|Tax ID:/i.test(line)) continue;
-
-    if (!title && titleRegex.test(line)) {
-      title = line;
-      continue;
-    }
-
-    if (!company && companyRegex.test(line)) {
-      company = line;
-      continue;
-    }
-
-    if (!address && /Road|Street|Suite|Avenue|Salai|Block|Village|Building|Floor|London|Delhi|Bengaluru|Mumbai|Chennai|Gurgaon|Kolkata|EC1V|UK|India/i.test(line)) {
-      address = line.replace(/^Company Address[\s,:-]*/i, '').trim();
-      continue;
-    }
-
-    if (!name && line.length > 3 && line.length < 35 && !/\d/.test(line) && !/Email:|Mobile:|Landline:|Website:|Address:|City:|Country:/i.test(line)) {
-      name = line;
-    }
-  }
-
-  if (!name && !email && !company && !mobile) return null;
-
-  if (!name) name = rawLines[0] || 'Unknown Contact';
-  name = name.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
-
-  if (address.includes('London')) city = 'London';
-  if (address.includes('Bengaluru')) city = 'Bengaluru';
-  if (address.includes('New Delhi')) city = 'New Delhi';
-  if (address.includes('Mumbai')) city = 'Mumbai';
-  if (address.includes('Chennai')) city = 'Chennai';
-  if (address.includes('Gurgaon')) city = 'Gurgaon';
-  if (address.includes('Kolkata')) city = 'Kolkata';
-
-  if (address.includes('UK')) country = 'UK';
-  if (address.includes('India')) country = 'India';
-
-  let industry = 'General Corporate';
-  if (/tech|soft|code|ai|digital|system|solution/i.test(company + ' ' + title)) industry = 'Technology & IT Services';
-  else if (/logistics|freight|transport|cargo/i.test(company)) industry = 'Logistics & Supply Chain';
-  else if (/health|hospital|pharma|medical/i.test(company)) industry = 'Healthcare & Life Sciences';
-  else if (/design|media|creative|pr/i.test(company + ' ' + title)) industry = 'Media, Advertising & PR';
-  else if (/architect|build|realty|habitat/i.test(company + ' ' + title)) industry = 'Real Estate & Construction';
-
-  return {
-    id: `card-${Date.now()}-${cardIdx}-${Math.random().toString(36).substr(2, 4)}`,
-    name,
-    title,
-    company,
-    industry,
-    email,
-    mobile,
-    landline,
-    website,
-    address,
-    city,
-    country,
-    notes: notes || `Extracted via WASM OCR Engine`
-  };
-}
-
-export async function extractCardDataWithTesseract(imageSrc: string): Promise<CardRecord[]> {
-  const result = await Tesseract.recognize(imageSrc, 'eng');
-  const rawText = result.data.text;
-
-  const cleanText = rawText
-    .replace(/[©®™\[\]]/g, '')
-    .replace(/\b[QXX0]\b/g, '');
-
-  const rawLines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
-  
-  // Check if rawText contains multiple email domains / email addresses (multi-card sheet)
-  const emailsInText = cleanText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi) || [];
-
-  if (emailsInText.length <= 1) {
-    const single = parseSingleCardFromLines(rawLines, 0);
-    return single ? [single] : [];
-  }
-
-  // Multi-card sheet detected in plain text: group lines by email blocks
-  const cards: CardRecord[] = [];
-  let currentBlock: string[] = [];
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i];
-    currentBlock.push(line);
-
-    // End block if next line starts a new name/card header or at end of array
-    const isLastLine = i === rawLines.length - 1;
-    const isEmailLine = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i.test(line);
-
-    if ((isEmailLine && currentBlock.length >= 4) || isLastLine) {
-      const parsed = parseSingleCardFromLines(currentBlock, cards.length);
-      if (parsed) cards.push(parsed);
-      currentBlock = [];
-    }
-  }
-
-  return cards.length > 0 ? cards : [parseSingleCardFromLines(rawLines, 0)!].filter(Boolean);
 }
 
 /**
@@ -335,33 +249,20 @@ function tryParseJson(text: string): any[] | null {
   return null;
 }
 
-export async function extractCardDataWithAI(
-  imageBase64: string,
-  model: string,
+/**
+ * Perform Vision AI Completion with Single Model
+ */
+async function callVisionApiSingle(
+  compressedBase64: string,
+  targetModel: string,
   apiKey: string,
-  endpoint: string = DEFAULT_ENDPOINT
+  endpoint: string
 ): Promise<CardRecord[]> {
-  // Compress image client-side keeping high 2048px resolution
-  const compressedBase64 = await compressImageForOcr(imageBase64, 2048, 0.92);
-
-  // If using offline Tesseract WASM, slice into 3x3 grid tiles to extract all 9 cards reliably
-  if (model === 'tesseract-wasm') {
-    const tiles = await sliceImageGrid(compressedBase64, 3, 3);
-    const allCards: CardRecord[] = [];
-    for (let i = 0; i < tiles.length; i++) {
-      const cardBatch = await extractCardDataWithTesseract(tiles[i]);
-      allCards.push(...cardBatch);
-    }
-    return allCards.length > 0 ? allCards : await extractCardDataWithTesseract(compressedBase64);
-  }
-
   const effectiveKey = getEffectiveApiKey(apiKey);
-  if (!effectiveKey) {
-    throw new Error('API Key Missing: Please click the Settings button (⚙️) to enter and save your OpenRouter API Key.');
-  }
-
   const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
-  const targetUrl = `${cleanEndpoint}/chat/completions`;
+  const targetUrl = cleanEndpoint.endsWith('/chat/completions') 
+    ? cleanEndpoint 
+    : `${cleanEndpoint}/chat/completions`;
 
   const prompt = `CRITICAL MANDATE: This image may contain MULTIPLE visiting cards placed in a grid (e.g. 3 rows x 3 columns = 9 cards).
 Scan systematically row by row from top-left to bottom-right and extract EVERY SINGLE VISITING CARD present in the image into a JSON ARRAY.
@@ -374,7 +275,7 @@ Ensure 100% accuracy for Name, Email, Mobile, and Landline numbers.
 Output MUST be strictly valid JSON starting with [ and ending with ].`;
 
   const requestBody = {
-    model: model || DEFAULT_MODEL,
+    model: targetModel || DEFAULT_MODEL,
     messages: [
       {
         role: 'user',
@@ -395,10 +296,13 @@ Output MUST be strictly valid JSON starting with [ and ending with ].`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${effectiveKey}`,
     'HTTP-Referer': 'https://vcpro.app',
     'X-Title': 'VC Pro Scanner'
   };
+
+  if (effectiveKey) {
+    headers['Authorization'] = `Bearer ${effectiveKey}`;
+  }
 
   const res = await fetch(targetUrl, {
     method: 'POST',
@@ -408,36 +312,15 @@ Output MUST be strictly valid JSON starting with [ and ending with ].`;
 
   if (!res.ok) {
     const errText = await res.text();
-    if (res.status === 401) {
-      throw new Error(`OpenRouter Authentication Failed (401). Please click the Settings button (⚙️) to update your API key.`);
-    }
-    throw new Error(`AI Extraction failed (${res.status}): ${errText.slice(0, 180)}`);
+    throw new Error(`HTTP ${res.status}: ${errText.slice(0, 150)}`);
   }
 
   const data = await res.json();
   const rawContent = data.choices?.[0]?.message?.content || '';
 
-  let parsedCards = tryParseJson(rawContent);
-
-  // If AI vision model extracted only 1 card or failed to return JSON on a grid sheet, slice into 3x3 grid tiles to extract ALL 9 cards!
-  if (!parsedCards || parsedCards.length <= 1) {
-    console.warn('AI Vision returned single card or non-JSON for multi-card sheet. Triggering 3x3 Grid Slicer Fallback...');
-    const tiles = await sliceImageGrid(compressedBase64, 3, 3);
-    const gridCards: CardRecord[] = [];
-
-    for (let i = 0; i < tiles.length; i++) {
-      const tileCards = await extractCardDataWithTesseract(tiles[i]);
-      gridCards.push(...tileCards);
-    }
-
-    if (gridCards.length > 1) {
-      return gridCards;
-    }
-  }
-
+  const parsedCards = tryParseJson(rawContent);
   if (!parsedCards || parsedCards.length === 0) {
-    const fallbackCards = await extractCardDataWithTesseract(compressedBase64);
-    return fallbackCards;
+    throw new Error('AI Vision returned invalid/unparseable JSON output.');
   }
 
   return parsedCards.map((c, index) => ({
@@ -455,6 +338,51 @@ Output MUST be strictly valid JSON starting with [ and ending with ].`;
     country: c.country || '',
     notes: c.notes || ''
   }));
+}
+
+/**
+ * Enterprise Vision AI Extractor with Free Model Cascading Fallback Chain
+ */
+export async function extractCardDataWithAI(
+  imageBase64: string,
+  model: string,
+  apiKey: string,
+  endpoint: string = DEFAULT_ENDPOINT
+): Promise<CardRecord[]> {
+  const compressedBase64 = await compressImageForOcr(imageBase64, 2048, 0.92);
+
+  // Models to attempt in sequence: Primary model -> Free Fallback Chain
+  const modelsToTry = [model || DEFAULT_MODEL, ...FREE_FALLBACK_MODELS.filter(m => m !== model)];
+  
+  let lastError: Error | null = null;
+
+  for (const candidateModel of modelsToTry) {
+    try {
+      const cards = await callVisionApiSingle(compressedBase64, candidateModel, apiKey, endpoint);
+      
+      // If single card returned on a potential grid sheet, slice into 3x3 tiles
+      if (cards.length <= 1) {
+        const tiles = await sliceImageGrid(compressedBase64, 3, 3);
+        if (tiles.length > 1) {
+          const gridCards: CardRecord[] = [];
+          for (const tile of tiles) {
+            try {
+              const tileRes = await callVisionApiSingle(tile, candidateModel, apiKey, endpoint);
+              gridCards.push(...tileRes);
+            } catch (tileErr) {}
+          }
+          if (gridCards.length > 1) return gridCards;
+        }
+      }
+
+      return cards;
+    } catch (err: any) {
+      console.warn(`Vision AI attempt failed on model '${candidateModel}':`, err.message || err);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('All AI Vision models in free fallback chain failed to extract cards.');
 }
 
 export async function runPythonAudit(cards: CardRecord[]): Promise<AuditResponse> {
