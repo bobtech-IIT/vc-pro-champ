@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { CreditCard, Smartphone, MessageSquare } from 'lucide-react';
+import Link from 'next/link';
+import { CreditCard, Smartphone, MessageSquare, FlaskConical } from 'lucide-react';
 import ModelSelectorModal from './ModelSelectorModal';
 
 interface HeaderProps {
@@ -61,6 +62,15 @@ export default function Header({
       </div>
 
       <div className="flex items-center gap-2.5">
+        {/* Data Lab Button */}
+        <Link href="/datalab"
+          className="px-3.5 py-2 rounded-xl bg-violet-950/60 hover:bg-violet-900/80 border border-violet-500/40 text-violet-200 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md"
+          title="Open Data Lab — EDA, Clean & GTM Export"
+        >
+          <FlaskConical className="w-4 h-4 text-violet-400" />
+          <span className="hidden md:inline">Data Lab</span>
+        </Link>
+
         {/* Quick Connect Generator Button */}
         <button
           onClick={onOpenQuickConnect}
