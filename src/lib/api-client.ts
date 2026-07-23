@@ -1,131 +1,57 @@
 import { CardRecord, AuditResponse } from './types';
 
+// ─── Primary: OpenRouter Free Vision Router ──────────────────────────────────
 export const DEFAULT_ENDPOINT = 'https://openrouter.ai/api/v1';
-export const DEFAULT_MODEL = 'openrouter/free';
+export const DEFAULT_MODEL    = 'openrouter/free';
 
-export const FREE_FALLBACK_MODELS = [
-  'openrouter/free',
-  'google/gemini-3.5-flash-lite',
-  'google/gemini-2.0-flash-exp:free',
-  'meta-llama/llama-3.2-11b-vision-instruct:free',
-  'mistralai/pixtral-12b:free',
-];
+// ─── Stage 2: Cerebras Ultra-Fast Text Cleanup (Optional) ────────────────────
+export const CEREBRAS_ENDPOINT = 'https://api.cerebras.ai/v1';
+export const CEREBRAS_MODEL    = 'gpt-oss-120b';
 
-export interface ProviderConfig {
-  id: string;
-  name: string;
-  defaultEndpoint: string;
-  keyUrl?: string;
-  models: { id: string; label: string }[];
+// Keep these exports for backward compat with any legacy imports
+export const PROVIDER_CONFIGS: Record<string, unknown> = {};
+export const FREE_FALLBACK_MODELS: string[] = [];
+
+// ─── localStorage Key Helpers ─────────────────────────────────────────────────
+export function getOpenRouterKey(): string {
+  if (typeof window === 'undefined') return '';
+  return (
+    localStorage.getItem('vcpro_openrouter_key') ||
+    localStorage.getItem('vcpro_api_key') ||
+    ''
+  ).trim();
 }
 
-export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
-  openrouter: {
-    id: 'openrouter',
-    name: 'OpenRouter (Default)',
-    defaultEndpoint: 'https://openrouter.ai/api/v1',
-    keyUrl: 'https://openrouter.ai/keys',
-    models: [
-      { id: 'openrouter/free', label: '⚡ openrouter/free (Auto Free Vision Models — Default)' },
-      { id: 'google/gemini-3.5-flash-lite', label: '✨ google/gemini-3.5-flash-lite' },
-      { id: 'google/gemini-2.0-flash-exp:free', label: '✨ google/gemini-2.0-flash-exp:free' },
-      { id: 'meta-llama/llama-3.2-11b-vision-instruct:free', label: '🦙 meta-llama/llama-3.2-11b-vision-instruct:free' },
-      { id: 'mistralai/pixtral-12b:free', label: '🎯 mistralai/pixtral-12b:free' },
-      { id: 'openai/gpt-4o-mini', label: '🤖 openai/gpt-4o-mini' },
-      { id: 'openai/gpt-4o', label: '🧠 openai/gpt-4o' },
-      { id: 'anthropic/claude-3.5-sonnet', label: '🎭 anthropic/claude-3.5-sonnet' },
-    ],
-  },
-  gemini: {
-    id: 'gemini',
-    name: 'Google Gemini',
-    defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    keyUrl: 'https://aistudio.google.com/app/apikey',
-    models: [
-      { id: 'gemini-3.5-flash-lite', label: '✨ gemini-3.5-flash-lite (Latest 2026 Ultra-Fast Vision)' },
-      { id: 'gemini-2.5-flash', label: '✨ gemini-2.5-flash (High Accuracy Vision)' },
-      { id: 'gemini-2.0-flash', label: '✨ gemini-2.0-flash' },
-      { id: 'gemini-1.5-flash', label: '⚡ gemini-1.5-flash' },
-      { id: 'gemini-1.5-pro', label: '🧠 gemini-1.5-pro' },
-    ],
-  },
-  groq: {
-    id: 'groq',
-    name: 'Groq Cloud',
-    defaultEndpoint: 'https://api.groq.com/openai/v1',
-    keyUrl: 'https://console.groq.com/keys',
-    models: [
-      { id: 'llama-3.2-11b-vision-preview', label: '⚡ llama-3.2-11b-vision-preview (Ultra-Fast)' },
-      { id: 'llama-3.2-90b-vision-preview', label: '🦙 llama-3.2-90b-vision-preview (High Precision)' },
-      { id: 'llama-3.3-70b-versatile', label: '🚀 llama-3.3-70b-versatile' },
-    ],
-  },
-  omniroute: {
-    id: 'omniroute',
-    name: 'OmniRoute Gateway',
-    defaultEndpoint: 'http://localhost:20128/v1',
-    keyUrl: 'https://github.com/diegosouzapw/OmniRoute',
-    models: [
-      { id: 'openrouter/free', label: '⚡ openrouter/free (50+ Free Models Pool)' },
-      { id: 'omniroute/auto', label: '🔀 omniroute/auto (Auto-Route Best Free Provider)' },
-      { id: 'google/gemini-3.5-flash-lite', label: '✨ google/gemini-3.5-flash-lite' },
-    ],
-  },
-  custom: {
-    id: 'custom',
-    name: 'Custom Endpoint',
-    defaultEndpoint: 'https://omniroute.online/v1',
-    models: [
-      { id: 'custom', label: '✏️ Custom Model ID (Type manually...)' }
-    ]
-  }
-};
-
-function getEffectiveApiKey(providedKey: string): string {
-  if (providedKey && providedKey.trim()) {
-    return providedKey.trim();
-  }
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('vcpro_api_key');
-    if (saved && saved.trim()) {
-      return saved.trim();
-    }
-  }
-  return '';
+export function getCerebrasKey(): string {
+  if (typeof window === 'undefined') return '';
+  return (localStorage.getItem('vcpro_cerebras_key') || '').trim();
 }
 
-/**
- * Fast Client-Side Image Compression for Vision API Transmission
- * Downscales images to 2048px max dimension at 0.92 quality.
- * Preserves high clarity for multi-card grid sheets (3x3 grid, 9+ cards on one image).
- */
-export async function compressImageForOcr(base64: string, maxDim: number = 2048, quality: number = 0.92): Promise<string> {
+// ─── Image Compression ────────────────────────────────────────────────────────
+export async function compressImageForOcr(
+  base64: string,
+  maxDim: number = 2048,
+  quality: number = 0.92
+): Promise<string> {
   if (typeof window === 'undefined') return base64;
   return new Promise((resolve) => {
     const img = new Image();
     img.src = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
     img.onload = () => {
-      let width = img.width;
-      let height = img.height;
-
-      if (width > maxDim || height > maxDim) {
-        if (width > height) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
+      let { width, height } = img;
+      if (width <= maxDim && height <= maxDim) return resolve(base64);
+      if (width > height) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
       } else {
-        return resolve(base64);
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
       }
-
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve(base64);
-
       ctx.drawImage(img, 0, 0, width, height);
       resolve(canvas.toDataURL('image/jpeg', quality));
     };
@@ -133,23 +59,21 @@ export async function compressImageForOcr(base64: string, maxDim: number = 2048,
   });
 }
 
-/**
- * Client-Side Canvas Slicer for Multi-Card Sheet Photos (e.g. 3x3 Grid of 9 Cards)
- */
-export async function sliceImageGrid(base64: string, rows: number = 3, cols: number = 3): Promise<string[]> {
+// ─── 3×3 Grid Slicer for Multi-Card Sheets ────────────────────────────────────
+export async function sliceImageGrid(
+  base64: string,
+  rows: number = 3,
+  cols: number = 3
+): Promise<string[]> {
   if (typeof window === 'undefined') return [base64];
   return new Promise((resolve) => {
     const img = new Image();
     img.src = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
     img.onload = () => {
-      if (img.width < 600 || img.height < 400) {
-        return resolve([base64]);
-      }
-
+      if (img.width < 600 || img.height < 400) return resolve([base64]);
       const tileW = Math.floor(img.width / cols);
       const tileH = Math.floor(img.height / rows);
       const tiles: string[] = [];
-
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const canvas = document.createElement('canvas');
@@ -168,263 +92,373 @@ export async function sliceImageGrid(base64: string, rows: number = 3, cols: num
   });
 }
 
-export async function testApiConnection(
-  apiKey: string,
-  model: string,
-  endpoint: string = DEFAULT_ENDPOINT
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
-    const targetUrl = cleanEndpoint.endsWith('/models') ? cleanEndpoint : `${cleanEndpoint}/models`;
-    const effectiveKey = getEffectiveApiKey(apiKey);
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (effectiveKey) {
-      headers['Authorization'] = `Bearer ${effectiveKey}`;
-    }
-
-    const response = await fetch(targetUrl, {
-      method: 'GET',
-      headers,
-    });
-
-    if (response.ok) {
-      return { success: true, message: `Connected successfully to ${cleanEndpoint}!` };
-    } else {
-      // Direct models check endpoint fallback
-      return { success: true, message: `Connected to API endpoint ${cleanEndpoint} (Model: ${model || 'default'})` };
-    }
-  } catch (err: any) {
-    return { 
-      success: false, 
-      message: `Connection failed: ${err.message || 'Network error'}` 
-    };
-  }
-}
-
-/**
- * Robust Multi-Stage JSON Extractor & Parser
- */
+// ─── Robust Multi-Stage JSON Parser ───────────────────────────────────────────
 function tryParseJson(text: string): any[] | null {
-  if (!text || !text.trim()) return null;
+  if (!text?.trim()) return null;
+  const cleaned = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
 
-  let cleaned = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+  const attempts: Array<() => any> = [
+    () => JSON.parse(cleaned),
+    () => {
+      const m = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      return m ? JSON.parse(m[0]) : null;
+    },
+    () => {
+      const m = cleaned.match(/\{[\s\S]*\}/);
+      const r = m ? JSON.parse(m[0]) : null;
+      return r ? [r] : null;
+    },
+    () => {
+      const s = cleaned.replace(/,\s*([\]}])/g, '$1');
+      const m = s.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      return m ? JSON.parse(m[0]) : null;
+    },
+  ];
 
-  try {
-    const parsed = JSON.parse(cleaned);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch (e) {}
-
-  const arrayMatch = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
-  if (arrayMatch) {
+  for (const attempt of attempts) {
     try {
-      const parsed = JSON.parse(arrayMatch[0]);
-      return Array.isArray(parsed) ? parsed : [parsed];
-    } catch (e) {}
+      const result = attempt();
+      if (result) return Array.isArray(result) ? result : [result];
+    } catch {}
   }
-
-  const objectMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (objectMatch) {
-    try {
-      const parsed = JSON.parse(objectMatch[0]);
-      return Array.isArray(parsed) ? parsed : [parsed];
-    } catch (e) {}
-  }
-
-  try {
-    const sanitized = cleaned
-      .replace(/,\s*([\]}])/g, '$1')
-      .replace(/(["'])\s*\n\s*(["'])/g, '$1 $2');
-    
-    const arrayMatch2 = sanitized.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (arrayMatch2) {
-      const parsed = JSON.parse(arrayMatch2[0]);
-      return Array.isArray(parsed) ? parsed : [parsed];
-    }
-  } catch (e) {}
-
   return null;
 }
 
-/**
- * Perform Vision AI Completion with Single Model
- */
-async function callVisionApiSingle(
+// ─── Card Normaliser ──────────────────────────────────────────────────────────
+function mapToCardRecords(parsed: any[]): CardRecord[] {
+  return parsed.map((c, index) => ({
+    id: `card-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 4)}`,
+    name:     (c.name     || '').trim(),
+    title:    (c.title    || '').trim(),
+    company:  (c.company  || '').trim(),
+    industry: c.industry  || 'General Corporate',
+    email:    (c.email    || '').trim().toLowerCase(),
+    mobile:   (c.mobile   || '').trim(),
+    landline: (c.landline || '').trim(),
+    website:  (c.website  || '').trim(),
+    address:  (c.address  || '').trim(),
+    city:     (c.city     || '').trim(),
+    country:  (c.country  || '').trim(),
+    notes:    (c.notes    || '').trim(),
+  }));
+}
+
+// ─── Stage 1: OpenRouter Vision Extraction ────────────────────────────────────
+const VISION_PROMPT = `You are a precise visiting card data extractor.
+This image may contain ONE or MULTIPLE visiting cards (e.g. arranged in a 3×3 grid = 9 cards).
+Scan every card systematically from top-left to bottom-right.
+Extract ALL cards present — do NOT stop after the first card.
+
+For each card extract exactly these keys:
+"name", "title", "company", "industry", "email", "mobile", "landline", "website", "address", "city", "country", "notes"
+
+Rules:
+- name: Full person name only, no honorifics (Mr/Dr/etc)
+- mobile: Mobile/cell number with country code if visible
+- landline: Office/desk/landline number only (different from mobile)
+- email: Exact email address, lowercase, must contain @
+- industry: Infer from company context if not stated on card
+- Return ONLY a valid JSON array starting with [ and ending with ]
+- No explanation, no markdown fences, no extra text — raw JSON only`;
+
+async function callOpenRouterVision(
   compressedBase64: string,
-  targetModel: string,
-  apiKey: string,
-  endpoint: string
-): Promise<CardRecord[]> {
-  const effectiveKey = getEffectiveApiKey(apiKey);
-  const cleanEndpoint = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
-  const targetUrl = cleanEndpoint.endsWith('/chat/completions') 
-    ? cleanEndpoint 
-    : `${cleanEndpoint}/chat/completions`;
+  apiKey: string
+): Promise<{ rawContent: string; cards: CardRecord[] }> {
+  const key = apiKey.trim() || getOpenRouterKey();
 
-  const prompt = `CRITICAL MANDATE: This image may contain MULTIPLE visiting cards placed in a grid (e.g. 3 rows x 3 columns = 9 cards).
-Scan systematically row by row from top-left to bottom-right and extract EVERY SINGLE VISITING CARD present in the image into a JSON ARRAY.
-Do NOT stop after 1 card! Extract all 2, 4, 6, 9 or more cards present on the sheet.
-
-Each card object in the JSON ARRAY must have these keys:
-"name", "title", "company", "industry", "email", "mobile", "landline", "website", "address", "city", "country", "notes".
-
-Ensure 100% accuracy for Name, Email, Mobile, and Landline numbers.
-Output MUST be strictly valid JSON starting with [ and ending with ].`;
-
-  const requestBody = {
-    model: targetModel || DEFAULT_MODEL,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: {
-              url: compressedBase64.startsWith('data:') ? compressedBase64 : `data:image/jpeg;base64,${compressedBase64}`
-            }
-          }
-        ]
-      }
-    ],
-    temperature: 0.1,
-    max_tokens: 4000
-  };
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'HTTP-Referer': 'https://vcpro.app',
-    'X-Title': 'VC Pro Scanner'
-  };
-
-  if (effectiveKey) {
-    headers['Authorization'] = `Bearer ${effectiveKey}`;
+  if (!key) {
+    throw new Error(
+      'NO_API_KEY: OpenRouter API key is required to scan cards. ' +
+      'Click Settings → OpenRouter tab → Get Free Key (openrouter.ai/keys). No credit card needed.'
+    );
   }
 
-  const res = await fetch(targetUrl, {
+  const res = await fetch(`${DEFAULT_ENDPOINT}/chat/completions`, {
     method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody)
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+      'HTTP-Referer': 'https://vcpro.app',
+      'X-Title': 'VC Pro Card Scanner',
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: VISION_PROMPT },
+            {
+              type: 'image_url',
+              image_url: {
+                url: compressedBase64.startsWith('data:')
+                  ? compressedBase64
+                  : `data:image/jpeg;base64,${compressedBase64}`,
+              },
+            },
+          ],
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 4000,
+    }),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`HTTP ${res.status}: ${errText.slice(0, 150)}`);
+    throw new Error(`HTTP ${res.status}: ${errText.slice(0, 300)}`);
   }
 
   const data = await res.json();
   const rawContent = data.choices?.[0]?.message?.content || '';
 
-  const parsedCards = tryParseJson(rawContent);
-  if (!parsedCards || parsedCards.length === 0) {
-    throw new Error('AI Vision returned invalid/unparseable JSON output.');
+  const parsed = tryParseJson(rawContent);
+  if (!parsed || parsed.length === 0) {
+    throw new Error(
+      'Vision AI returned unparseable output. Raw: ' + rawContent.slice(0, 200)
+    );
   }
 
-  return parsedCards.map((c, index) => ({
-    id: `card-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 4)}`,
-    name: c.name || '',
-    title: c.title || '',
-    company: c.company || '',
-    industry: c.industry || 'General Corporate',
-    email: c.email || '',
-    mobile: c.mobile || '',
-    landline: c.landline || '',
-    website: c.website || '',
-    address: c.address || '',
-    city: c.city || '',
-    country: c.country || '',
-    notes: c.notes || ''
-  }));
+  return { rawContent, cards: mapToCardRecords(parsed) };
 }
 
+// ─── Stage 2: Cerebras Text Cleanup (Optional) ────────────────────────────────
+async function callCerebrasCleanup(
+  rawVisionText: string,
+  cerebrasKey: string
+): Promise<CardRecord[] | null> {
+  if (!cerebrasKey.trim()) return null;
+
+  const cleanupPrompt = `You are an expert visiting card data validator and cleaner.
+Below is raw text extracted from one or more visiting card images by a vision AI.
+The text may be messy, contain OCR artifacts (symbols like ©, □, ▪, @, §), or have mixed card data.
+
+Your task:
+1. Identify all individual visiting cards in this raw text
+2. For each card, extract and clean: name, title, company, industry, email, mobile, landline, website, address, city, country, notes
+3. Remove OCR artifacts and garbage symbols from all fields
+4. Validate: email must contain @, phone numbers must only contain digits, spaces, +, (, ), -
+5. name: person name only (no company names mixed in)
+6. Return ONLY a valid JSON array starting with [ and ending with ]. No explanation, no markdown.
+
+Raw extracted text:
+${rawVisionText}`;
+
+  try {
+    const res = await fetch(`${CEREBRAS_ENDPOINT}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cerebrasKey.trim()}`,
+      },
+      body: JSON.stringify({
+        model: CEREBRAS_MODEL,
+        messages: [{ role: 'user', content: cleanupPrompt }],
+        temperature: 0.1,
+        max_tokens: 8000,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('Cerebras Stage 2 cleanup failed with status:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const parsed = tryParseJson(content);
+    return parsed && parsed.length > 0 ? mapToCardRecords(parsed) : null;
+  } catch (err) {
+    console.warn('Cerebras Stage 2 cleanup error (non-fatal, using Stage 1 result):', err);
+    return null;
+  }
+}
+
+// ─── Real Connection Test ─────────────────────────────────────────────────────
 /**
- * Enterprise Vision AI Extractor with Free Model Cascading Fallback Chain
+ * Makes an actual /chat/completions call (not just /models) to verify the key truly works.
+ */
+export async function testApiConnection(
+  apiKey: string,
+  model: string,
+  endpoint: string = DEFAULT_ENDPOINT
+): Promise<{ success: boolean; message: string }> {
+  const key = (apiKey || '').trim() || getOpenRouterKey();
+
+  if (!key) {
+    return {
+      success: false,
+      message: 'No API key provided. Enter your OpenRouter key above, then test.',
+    };
+  }
+
+  try {
+    const res = await fetch(`${DEFAULT_ENDPOINT}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+        'HTTP-Referer': 'https://vcpro.app',
+        'X-Title': 'VC Pro Card Scanner',
+      },
+      body: JSON.stringify({
+        model: DEFAULT_MODEL,
+        messages: [{ role: 'user', content: 'Reply with the single word: OK' }],
+        max_tokens: 5,
+      }),
+    });
+
+    if (res.ok) {
+      return {
+        success: true,
+        message: '✅ OpenRouter key verified! openrouter/free vision engine is active and ready.',
+      };
+    }
+
+    const errText = await res.text();
+    return {
+      success: false,
+      message: `Connection failed (${res.status}): ${errText.slice(0, 150)}`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Network error: ${err.message || 'Could not reach OpenRouter API'}`,
+    };
+  }
+}
+
+// ─── Main Extraction Pipeline ─────────────────────────────────────────────────
+/**
+ * Two-stage card extraction:
+ *   Stage 1 — openrouter/free (vision) with 3× auto-retry on 404/429
+ *   Stage 2 — Cerebras gpt-oss-120b (text cleanup) if Cerebras key is present
  */
 export async function extractCardDataWithAI(
   imageBase64: string,
-  model: string,
+  model: string,          // kept for API compat with page.tsx — ignored internally
   apiKey: string,
-  endpoint: string = DEFAULT_ENDPOINT
+  endpoint: string = DEFAULT_ENDPOINT  // kept for API compat — ignored internally
 ): Promise<CardRecord[]> {
   const compressedBase64 = await compressImageForOcr(imageBase64, 2048, 0.92);
+  const effectiveKey = (apiKey || '').trim() || getOpenRouterKey();
 
-  // Models to attempt in sequence: Primary model -> Free Fallback Chain
-  const modelsToTry = [model || DEFAULT_MODEL, ...FREE_FALLBACK_MODELS.filter(m => m !== model)];
-  
+  // ── Stage 1: openrouter/free with 3× retry on transient 404/429 ─────────────
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000;
+
   let lastError: Error | null = null;
+  let stage1Result: { rawContent: string; cards: CardRecord[] } | null = null;
 
-  for (const candidateModel of modelsToTry) {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const cards = await callVisionApiSingle(compressedBase64, candidateModel, apiKey, endpoint);
-      
-      // If single card returned on a potential grid sheet, slice into 3x3 tiles
-      if (cards.length <= 1) {
-        const tiles = await sliceImageGrid(compressedBase64, 3, 3);
-        if (tiles.length > 1) {
-          const gridCards: CardRecord[] = [];
-          for (const tile of tiles) {
-            try {
-              const tileRes = await callVisionApiSingle(tile, candidateModel, apiKey, endpoint);
-              gridCards.push(...tileRes);
-            } catch (tileErr) {}
-          }
-          if (gridCards.length > 1) return gridCards;
-        }
+      stage1Result = await callOpenRouterVision(compressedBase64, effectiveKey);
+      break;
+    } catch (err: any) {
+      lastError = err;
+      const msg: string = err.message || '';
+
+      // Hard stop — missing key, no point retrying
+      if (msg.startsWith('NO_API_KEY')) throw err;
+
+      // Retry on "no free vision model available" (404) or rate limit (429)
+      const isRetryable = msg.includes('404') || msg.includes('429') || msg.includes('No endpoints found');
+      if (isRetryable && attempt < MAX_RETRIES - 1) {
+        console.warn(
+          `openrouter/free attempt ${attempt + 1}/${MAX_RETRIES} failed. ` +
+          `Retrying in ${RETRY_DELAY_MS / 1000}s... (${msg.slice(0, 60)})`
+        );
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
       }
 
-      return cards;
-    } catch (err: any) {
-      console.warn(`Vision AI attempt failed on model '${candidateModel}':`, err.message || err);
-      lastError = err;
+      // Non-retryable or final attempt
+      throw new Error(
+        isRetryable
+          ? 'openrouter/free: Free vision models are currently at capacity. Please wait ~1 minute and try again.'
+          : msg
+      );
     }
   }
 
-  throw lastError || new Error('All AI Vision models in free fallback chain failed to extract cards.');
+  if (!stage1Result) {
+    throw lastError || new Error('openrouter/free failed after all retries. Please try again shortly.');
+  }
+
+  // ── Grid detection: if ≤1 card on a wide image, slice 3×3 and re-scan ────────
+  if (stage1Result.cards.length <= 1) {
+    const tiles = await sliceImageGrid(compressedBase64, 3, 3);
+    if (tiles.length > 1) {
+      const gridCards: CardRecord[] = [];
+      for (const tile of tiles) {
+        try {
+          const tileResult = await callOpenRouterVision(tile, effectiveKey);
+          // Keep only tiles with at least a name, email, or mobile
+          const valid = tileResult.cards.filter((c) => c.name || c.email || c.mobile);
+          gridCards.push(...valid);
+        } catch {
+          // Silently skip blank/failed tiles
+        }
+      }
+      if (gridCards.length > 1) {
+        // Optionally clean grid result with Cerebras
+        const cbKey = getCerebrasKey();
+        if (cbKey) {
+          const rawGridText = gridCards
+            .map((c) => `${c.name} | ${c.title} | ${c.company} | ${c.email} | ${c.mobile} | ${c.address}`)
+            .join('\n---\n');
+          const cleaned = await callCerebrasCleanup(rawGridText, cbKey);
+          return cleaned && cleaned.length > 0 ? cleaned : gridCards;
+        }
+        return gridCards;
+      }
+    }
+  }
+
+  // ── Stage 2: Cerebras text cleanup (if Cerebras key is stored) ───────────────
+  const cbKey = getCerebrasKey();
+  if (cbKey && stage1Result.rawContent) {
+    const cleaned = await callCerebrasCleanup(stage1Result.rawContent, cbKey);
+    if (cleaned && cleaned.length > 0) return cleaned;
+  }
+
+  return stage1Result.cards;
 }
 
+// ─── Python Audit Pipeline ────────────────────────────────────────────────────
 export async function runPythonAudit(cards: CardRecord[]): Promise<AuditResponse> {
   try {
     const res = await fetch('/api/audit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cards })
+      body: JSON.stringify({ cards }),
     });
-
-    if (!res.ok) {
-      throw new Error(`Python audit serverless API error status ${res.status}`);
-    }
-
+    if (!res.ok) throw new Error(`Audit API error ${res.status}`);
     return await res.json();
   } catch (err) {
-    console.warn('Fallback to client-side audit due to local server response:', err);
-    
-    let corrections_made = 0;
-    let duplicates_found = 0;
-    const audit_logs: string[] = [];
+    console.warn('Falling back to client-side audit:', err);
 
-    const processed = cards.map((card) => {
-      const c = { ...card };
-
-      if (c.email) c.email = c.email.trim().toLowerCase();
-      if (c.name) c.name = c.name.trim();
-
-      return c;
-    });
+    const processed = cards.map((card) => ({
+      ...card,
+      name:  card.name?.trim()  || '',
+      email: card.email?.trim().toLowerCase() || '',
+    }));
 
     return {
       processed_cards: processed,
       stats: {
         total_cards: cards.length,
         cleanliness_score: 100,
-        corrections_made,
-        duplicates_found,
-        missing_values_count: cards.reduce((acc, c) => acc + (c.email ? 0 : 1) + (c.mobile ? 0 : 1), 0),
-        flagged_verification_count: 0
+        corrections_made: 0,
+        duplicates_found: 0,
+        missing_values_count: cards.reduce(
+          (acc, c) => acc + (c.email ? 0 : 1) + (c.mobile ? 0 : 1),
+          0
+        ),
+        flagged_verification_count: 0,
       },
-      audit_logs: audit_logs.length ? audit_logs : ['Client-side audit completed successfully.']
+      audit_logs: ['Client-side audit completed successfully.'],
     };
   }
 }
