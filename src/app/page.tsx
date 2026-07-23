@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import DashboardStats from '@/components/DashboardStats';
 import Dropzone from '@/components/Dropzone';
-import CameraScanner from '@/components/CameraScanner';
 import DataTable from '@/components/DataTable';
 import WaterBreakModal from '@/components/WaterBreakModal';
 import TemplateMappingModal from '@/components/TemplateMappingModal';
@@ -12,24 +11,23 @@ import AuditSummaryModal from '@/components/AuditSummaryModal';
 import QuickConnectModal from '@/components/QuickConnectModal';
 
 import { CardRecord, AuditStats } from '@/lib/types';
-import { 
-  extractCardDataWithAI, 
-  runPythonAudit, 
-  DEFAULT_ENDPOINT, 
-  DEFAULT_MODEL 
+import {
+  extractCardDataWithAI,
+  runPythonAudit,
+  DEFAULT_ENDPOINT,
+  DEFAULT_MODEL
 } from '@/lib/api-client';
-import { 
-  createInitialSessionState, 
-  appendCardsToSession, 
-  MAX_SESSION_LIMIT 
+import {
+  createInitialSessionState,
+  appendCardsToSession,
+  MAX_SESSION_LIMIT
 } from '@/lib/session-manager';
 
-import { 
-  Camera, 
-  Play, 
-  Loader2, 
-  ShieldCheck, 
-  RotateCcw, 
+import {
+  Play,
+  Loader2,
+  ShieldCheck,
+  RotateCcw,
   AlertCircle
 } from 'lucide-react';
 
@@ -70,7 +68,6 @@ export default function Home() {
 
   // File Upload State
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
-  const [showCamera, setShowCamera] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState<string>('');
 
@@ -198,17 +195,6 @@ export default function Home() {
     }
   };
 
-  const handleCameraCapture = async (base64Image: string) => {
-    setSelectedFiles((prev) => [
-      ...prev,
-      {
-        id: `cam-${Date.now()}`,
-        file: null,
-        previewUrl: base64Image,
-        isPdf: false,
-      },
-    ]);
-  };
 
   const handleUpdateCard = (id: string, field: string, value: string) => {
     setSessionState((prev) => ({
@@ -330,13 +316,6 @@ export default function Home() {
         cards={sessionState.cards}
       />
 
-      {/* Camera Scanner Overlay */}
-      {showCamera && (
-        <CameraScanner
-          onCapture={handleCameraCapture}
-          onClose={() => setShowCamera(false)}
-        />
-      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
@@ -353,22 +332,14 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-white tracking-wide">
-                Scan & Input Visiting Cards (Fast OCR Parallel Engine)
+                Scan Visiting Cards — Batch Upload
               </h2>
               <p className="text-xs text-slate-400">
-                Drop multiple card photos, PDFs, or use live camera capture. Core fields (Name, Phone, Email) are 100% validated.
+                Drop JPEGs, PNGs, or PDFs (up to 50 files). Multi-card grid sheets supported. Name, Phone &amp; Email validated.
               </p>
             </div>
 
             <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              <button
-                onClick={() => setShowCamera(true)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-700 cursor-pointer shadow-md"
-              >
-                <Camera className="w-4 h-4 text-indigo-400" />
-                <span>Live Camera</span>
-              </button>
-
               <button
                 onClick={handleProcessCards}
                 disabled={processing || selectedFiles.length === 0}
@@ -382,7 +353,7 @@ export default function Home() {
                 ) : (
                   <>
                     <Play className="w-4 h-4 fill-current" />
-                    <span>Fast Scan Cards ({selectedFiles.length})</span>
+                    <span>Scan Cards ({selectedFiles.length})</span>
                   </>
                 )}
               </button>
